@@ -19,6 +19,7 @@ from typing import Dict, Tuple
 import hydra
 import jax
 import jax.numpy as jnp
+
 import omegaconf
 from tqdm.auto import trange
 
