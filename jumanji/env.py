@@ -27,7 +27,7 @@ from jumanji import specs
 from jumanji.types import Observation, TimeStep
 
 
-class StateProtocol(Protocol):
+class StateProtocol(Protocol): #
     """Enforce that the State for every Environment must implement a key."""
 
     key: chex.PRNGKey
