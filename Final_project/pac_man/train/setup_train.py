@@ -21,7 +21,7 @@ import optax
 from omegaconf import DictConfig
 
 import jumanji
-from jumanji.env import Environment
+from Final_project.pac_man.env_basic.environment_basic import Environment
 from jumanji.environments import (
     CVRP,
     MMST,
@@ -49,21 +49,21 @@ from jumanji.environments import (
     Tetris,
 )
 from jumanji.training import networks
-from jumanji.training.agents.a2c import A2CAgent
-from jumanji.training.agents.base import Agent
-from jumanji.training.agents.random import RandomAgent
-from jumanji.training.evaluator import Evaluator
-from jumanji.training.loggers import (
+from Final_project.pac_man.agents.a2c_agent import A2CAgent
+from Final_project.pac_man.agents.base_agent import Agent
+from Final_project.pac_man.agents.random_agent import RandomAgent
+from evaluator import Evaluator
+from loggers import (
     Logger,
     NeptuneLogger,
     NoOpLogger,
     TensorboardLogger,
     TerminalLogger,
 )
-from jumanji.training.networks.actor_critic import ActorCriticNetworks
-from jumanji.training.networks.protocols import RandomPolicy
-from jumanji.training.types import ActingState, TrainingState
-from jumanji.wrappers import MultiToSingleWrapper, VmapAutoResetWrapper
+from Final_project.pac_man.networks.actor_critic import ActorCriticNetworks
+from Final_project.pac_man.networks.protocols import RandomPolicy
+from types import ActingState, TrainingState
+from wrappers import MultiToSingleWrapper, VmapAutoResetWrapper
 
 
 def setup_logger(cfg: DictConfig) -> Logger:

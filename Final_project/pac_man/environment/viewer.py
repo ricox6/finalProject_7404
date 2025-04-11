@@ -25,9 +25,9 @@ from matplotlib import image
 from matplotlib.axes import Axes
 from numpy.typing import NDArray
 
-import jumanji.environments
-from jumanji.environments.commons.maze_utils.maze_rendering import MazeViewer
-from jumanji.environments.routing.pac_man.types import Observation, State
+#import jumanji.environments
+from maze_rendering import MazeViewer
+from types import Observation, State
 
 
 class PacManViewer(MazeViewer):
@@ -132,7 +132,7 @@ class PacManViewer(MazeViewer):
         plt.close(self._name)
 
     def _clear_display(self) -> None:
-        if jumanji.environments.is_colab():
+        #if jumanji.environments.is_colab():
             import IPython.display
 
             IPython.display.clear_output(True)
@@ -141,8 +141,8 @@ class PacManViewer(MazeViewer):
         if plt.isinteractive():
             # Required to update render when using Jupyter Notebook.
             fig.canvas.draw()
-            if jumanji.environments.is_colab():
-                plt.show(self._name)
+            #if jumanji.environments.is_colab():
+                #plt.show(self._name)
         else:
             # Required to update render when not using Jupyter Notebook.
             fig.canvas.draw_idle()

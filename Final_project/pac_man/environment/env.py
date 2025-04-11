@@ -21,19 +21,19 @@ import jax.numpy as jnp
 import matplotlib.animation
 from chex import PRNGKey
 
-from jumanji import specs
-from jumanji.env import Environment
-from jumanji.environments.routing.pac_man.constants import DEFAULT_MAZE, MOVES
-from jumanji.environments.routing.pac_man.generator import AsciiGenerator, Generator
-from jumanji.environments.routing.pac_man.types import Observation, Position, State
-from jumanji.environments.routing.pac_man.utils import (
+import Final_project.pac_man.env_basic.specs_basic as specs
+from Final_project.pac_man.env_basic.environment_basic import Environment
+from constants import DEFAULT_MAZE, MOVES
+from generator import AsciiGenerator, Generator
+from types import Observation, Position, State
+from utils import (
     check_ghost_collisions,
     ghost_move,
     player_step,
 )
-from jumanji.environments.routing.pac_man.viewer import PacManViewer
-from jumanji.types import TimeStep, restart, termination, transition
-from jumanji.viewer import Viewer
+from viewer import PacManViewer
+from Final_project.pac_man.env_basic.types_basic import TimeStep, restart, termination, transition
+from Final_project.pac_man.env_basic.viewer_basic import Viewer
 
 
 class PacMan(Environment[State, specs.DiscreteArray, Observation]):

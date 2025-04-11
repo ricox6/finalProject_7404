@@ -20,11 +20,11 @@ import haiku as hk
 import jax
 from jax import numpy as jnp
 
-from jumanji.env import Environment
-from jumanji.training.agents.a2c import A2CAgent
-from jumanji.training.agents.base import Agent
-from jumanji.training.agents.random import RandomAgent
-from jumanji.training.types import ActingState, ParamsState
+from Final_project.pac_man.env_basic.environment_basic import Environment
+from Final_project.pac_man.agents.a2c_agent import A2CAgent
+from Final_project.pac_man.agents.base_agent import Agent
+import Final_project.pac_man.agents.random_agent as RandomAgent
+from Final_project.pac_man.train.types import ActingState, ParamsState
 
 
 class Evaluator:

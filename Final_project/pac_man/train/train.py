@@ -23,18 +23,18 @@ import jax.numpy as jnp
 import omegaconf
 from tqdm.auto import trange
 
-from jumanji.training import utils
-from jumanji.training.agents.random import RandomAgent
-from jumanji.training.loggers import TerminalLogger
-from jumanji.training.setup_train import (
+import utils
+from Final_project.pac_man.agents.random_agent import RandomAgent
+from loggers import TerminalLogger
+from setup_train import (
     setup_agent,
     setup_env,
     setup_evaluators,
     setup_logger,
     setup_training_state,
 )
-from jumanji.training.timer import Timer
-from jumanji.training.types import TrainingState
+from timer import Timer
+from types import TrainingState
 
 
 @hydra.main(config_path="configs", config_name="config.yaml")
