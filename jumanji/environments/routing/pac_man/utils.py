@@ -74,11 +74,11 @@ def ghost_move(
         )
         vert_col = jnp.array([1, 0, 1, 0])
         hor_col = jnp.array([0, 1, 0, 1])
-
+        # only move vertically or horizontally
         # If valids is  [1,0,1,0] or [0,1,0,1] then use old action
         # this is the case where the ghosts are in a tunnel as ghosts
         # are not allowed to backtrack.
-
+        # tunnel: 不存在拐角的地方（无法转弯的地方），这种情况下鬼不能回退，保证能够拦住玩家（同时减少复杂度）
         is_in_tunnel = jnp.logical_or(
             jnp.array_equal(valids, vert_col), jnp.array_equal(valids, hor_col)
         )
@@ -92,13 +92,13 @@ def ghost_move(
             """Chose new action when at intersection"""
             logits, actions, _, ghost_tunnel_key, _ = inputs
             _, ghost_tunnel_key = jax.random.split(ghost_tunnel_key)
-            masked_logits = jnp.where(logits == 0, -1e9, logits)
+            masked_logits = jnp.where(logits == 0, -1e9, logits)  # compute the probability of choosing some actions
             # Softmax distribution
             softmax_dist = nn.softmax(masked_logits)
             weighted_actions = actions * logits
             new_action = jax.random.choice(
                 ghost_tunnel_key, weighted_actions, p=softmax_dist
-            ).astype(int)
+            ).astype(int) # choose a random action based on the probability
             return new_action
 
         inputs_no_tunnel = (
@@ -121,7 +121,7 @@ def ghost_move(
 
         position = ghost_pos
         chosen_action = jax.lax.cond(ghost_start < 0, start_over, no_start, inputs_no_tunnel)
-
+        # if ghost is started, pick a new action else do nothing
         # Use chosen action
         move_left = lambda position: (position[1], position[0] - 1)
         move_up = lambda position: (position[1] - 1, position[0])
@@ -348,12 +348,12 @@ def check_ghost_collisions(
     ) -> Tuple[chex.Array, chex.Numeric, chex.Numeric, chex.Numeric, chex.Numeric]:
         """Check if ghost has collided with player"""
         frightened_time = state.frightened_state_time
-        is_eat = frightened_time > 0
+        is_eat = frightened_time > 0 # if the ghost is eaten
 
         ghost_p = Position(y=ghost_pos[0], x=ghost_pos[1])
         old_ghost_p = Position(y=old_ghost_pos[0], x=old_ghost_pos[1])
 
-        # Check if new player pos is the same as the old ghost pos
+        # Check if new player pos is the same as the ghost pos
         cond_x1 = ghost_p.x == new_player_pos.x
         cond_y1 = ghost_p.y == new_player_pos.y
         cond1 = cond_x1 * cond_y1
@@ -368,15 +368,16 @@ def check_ghost_collisions(
         cond_y3 = old_ghost_p.y == new_player_pos.y
 
         cond3 = cond_x3 * cond_y3
-        cond = cond1 | cond2 | cond3
+        cond = cond1 | cond2 | cond3 # what time is collisions
 
         ghost_reset = is_eat * cond
-        ghost_init_steps = ghost_reset * 6
+        ghost_init_steps = ghost_reset * 6 # 当幽灵被吃掉时，设置初始化步数（6步），控制幽灵重置后的移动逻辑
         edible = ghost_eaten
-
+        # if no collision, apply the function
         def no_col_fn() -> Tuple[chex.Array, chex.Numeric, chex.Numeric, chex.Numeric]:
             return ghost_pos, False, 0.0, edible
 
+        # if collided, apply the function
         def col_fn() -> Tuple[chex.Array, chex.Numeric, chex.Numeric, chex.Numeric]:
             reset_true = lambda: (jnp.array(og_pos), False, 200.0, False)
             reset_false = lambda: (ghost_pos, True, 0.0, edible)
@@ -385,7 +386,7 @@ def check_ghost_collisions(
 
         # First check for collision
         path, done, col_reward, ghost_eaten = jax.lax.cond(cond, col_fn, no_col_fn)
-        col_reward = col_reward * edible
+        col_reward = col_reward * edible # only reward when it's edible
         return path, ghost_init_steps, done, col_reward, ghost_eaten
 
     old_ghost_positions = state.old_ghost_locations

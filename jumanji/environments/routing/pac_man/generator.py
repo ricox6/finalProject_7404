@@ -37,23 +37,24 @@ def generate_maze_from_ascii(maze: List) -> Any:
         binary_row = []
         for y, column in enumerate(row):
             if column == "G":
-                ghost_spawns.append((y, x))
+                ghost_spawns.append((y, x)) # birthplace of ghost
             if column == "P":
-                player_coords = (y, x)
+                player_coords = (y, x) # birthplace of player
             if column == "X":
-                binary_row.append(0)
+                binary_row.append(0) # the wall
             else:
-                binary_row.append(1)
-                cookie_spaces.append((y, x))
-                reachable_spaces.append((y, x))
+                binary_row.append(1) # approachable position
+                cookie_spaces.append((y, x)) # the pellets position
+                reachable_spaces.append((y, x)) # reachable_spaces
                 if column == "O":
-                    powerup_spaces.append((y, x))
+                    powerup_spaces.append((y, x)) # powerup pill
                 if column == "T":
-                    init_targets.append((y, x))
+                    init_targets.append((y, x)) # the position of the player in frightened mode / normal mode, so ghost can avoid?
                 if column == "S":
-                    scatter_targets.append((y, x))
-
-        numpy_maze.append(binary_row)
+                    scatter_targets.append((y, x)) # in frightened mode, the target place for ghost?
+        # 初始目标点可能是在游戏开始时，鬼怪需要移动到特定的位置，以便更好地包围玩家。
+        # 散射目标点可能是在鬼怪处于受惊状态时，它们会散开到这些目标点，增加游戏的难度。
+        numpy_maze.append(binary_row) # representation of maze
 
     return (
         numpy_maze,
@@ -118,8 +119,8 @@ class AsciiGenerator(Generator):
 
         self.ghost_spawns = jnp.array(self.map_data[4])
         self.player_coords = Position(y=self.map_data[5][0], x=self.map_data[5][1])
-        self.init_targets = self.map_data[6]
-        self.scatter_targets = jnp.array(self.map_data[7])
+        self.init_targets = self.map_data[6] # ?
+        self.scatter_targets = jnp.array(self.map_data[7]) # ?
         self.x_size = self.numpy_maze.shape[0]
         self.y_size = self.numpy_maze.shape[1]
 

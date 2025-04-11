@@ -45,3 +45,14 @@ class TestAsciiGenerator:
         assert state.frightened_state_time == 0
         assert jnp.array_equal(state.old_ghost_locations, state.ghost_locations)
         assert state.dead is False
+
+        '''
+        初始目标点 (init_targets)
+        作用：在游戏开始时，鬼怪会移动到这些位置。这些目标点帮助鬼怪迅速占据有利位置，以便更好地追捕玩家。
+        位置标记：在ASCII迷宫中用字符 'T' 标记。
+        用途：初始化鬼怪的目标位置，确保它们在游戏开始时有明确的移动方向。
+        散射目标点 (scatter_targets)
+        作用：当鬼怪处于受惊状态（即玩家吃了强化物后，鬼怪变蓝且可被吃掉）时，鬼怪会移动到这些散射目标点。这些目标点通常位于迷宫的不同角落，使鬼怪分散开来，增加玩家的生存机会。
+        位置标记：在ASCII迷宫中用字符 'S' 标记。
+        用途：在受惊状态下，引导鬼怪远离玩家，增加游戏的策略性和挑战性。
+        '''

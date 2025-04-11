@@ -178,7 +178,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             dtype=jnp.int32,
             name="pellet_locations",
         )
-        action_mask = specs.BoundedArray(
+        action_mask = specs.BoundedArray( # action_mask is aimed for non-optional actions: like near a wall or obstacle.
             shape=(5,),
             dtype=bool,
             minimum=False,
@@ -187,8 +187,8 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         )
 
         frightened_state_time = specs.Array((), jnp.int32, "frightened_state_time")
-        score = specs.Array((), jnp.int32, "frightened_state_time")
-
+        score = specs.Array((), jnp.int32, "frightened_state_time") # where there are two frightened_state_time?
+        # one single value
         return specs.Spec(
             Observation,
             "ObservationSpec",
@@ -270,7 +270,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
 
         # Check if episode terminates
         num_pellets = next_state.pellets
-        dead = next_state.dead
+        # dead = next_state.dead
         time_limit_exceeded = next_state.step_count >= self.time_limit
         all_pellets_found = num_pellets == 0
         dead = next_state.dead == 1
@@ -336,7 +336,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         state = state.replace(pellets=num_pellets)
         state = state.replace(key=key)
 
-        def powerup_collected() -> chex.Array:
+        def powerup_collected() -> chex.Array: # if the powerup is collected at the scatter time? plus 30s or set to 30s?
             """If a power-up was collected set scatter time to 30"""
             return jnp.array(30, jnp.int32)
 
@@ -352,9 +352,9 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         state.ghost_actions = ghost_actions
 
         # Decrease ghost starting delay
-        state.ghost_starts = state.ghost_starts - 1
-        reward = collision_rewards + power_up_rewards + ghost_col_rewards
-        state.score = jnp.array(state.score + reward, jnp.int32)
+        state.ghost_starts = state.ghost_starts - 1 # before the ghost starts, it won't hurt the pac_man
+        reward = collision_rewards + power_up_rewards + ghost_col_rewards # sum of the rewards
+        state.score = jnp.array(state.score + reward, jnp.int32) # the score of the player
         return state, reward
 
     def check_rewards(self, state: State) -> Tuple[int, chex.Array, int]:
@@ -374,17 +374,17 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         # Get the locations of the pellets and the player
         pellet_spaces = jnp.array(state.pellet_locations)
         player_space = state.player_locations
-        ps = jnp.array([player_space.y, player_space.x])
+        ps = jnp.array([player_space.y, player_space.x]) # the location of player presented as (x,y)
 
         # Get the number of pellets on the map
         num_pellets = state.pellets
 
         # Check if player has eaten a pellet in this step
-        ate_pellet = jnp.any(jnp.all(ps == pellet_spaces, axis=-1))
+        ate_pellet = jnp.any(jnp.all(ps == pellet_spaces, axis=-1)) # validate the location of pellet and players
 
         # Reduce number of pellets on map if eaten, add reward and remove eaten pellet
         num_pellets -= ate_pellet.astype(int)
-        rewards = ate_pellet * 10.0
+        rewards = ate_pellet * 10.0 # every time eat a pellet, get a reward of 10
         mask = jnp.logical_not(jnp.all(ps == pellet_spaces, axis=-1))
         pellet_spaces = pellet_spaces * mask[..., None]
 
@@ -470,9 +470,9 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         location_value = grid[new_player_pos.x, new_player_pos.y]
 
         collision = jax.lax.cond(
-            location_value == 1,
-            lambda x: new_player_pos,
-            lambda x: state.player_locations,
+            location_value == 1, # if it is not a wall return location_value=1 (where is the maze-refer to the generator code)
+            lambda x: new_player_pos, # update the position
+            lambda x: state.player_locations, # stay the same position
             0,
         )
         return collision
@@ -492,7 +492,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         # vmap over the moves.
         action_mask = jax.vmap(is_move_valid, in_axes=(None, 0))(player_pos, MOVES) * jnp.array(
             [True, True, True, True, False]
-        )
+        ) # to mask the moves that is invalid for current state
 
         return action_mask
 
@@ -510,7 +510,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             score=state.score,
         )
 
-    def render(self, state: State) -> Any:
+    def render(self, state: State) -> Any: # render function for visualization
         """Render the given state of the environment.
 
         Args:
