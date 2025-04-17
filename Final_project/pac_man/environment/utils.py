@@ -53,7 +53,7 @@ def ghost_move(
         ghost_num: int,
         player_pos: chex.Array,
         ghost_init_target: chex.Array,
-        old_ghost_locations: chex.Array,
+        old_ghost_locations: chex.Array, # ￥￥￥￥￥这里不要masked的！这里要真实的location，这里都是对真实情况的操作，无视可见不可见状态，处理真实的移动和碰撞！
         ghost_start: chex.Array,
         scatter_target: chex.Array,
     ) -> Tuple[chex.Array, int]:
@@ -67,7 +67,7 @@ def ghost_move(
             ghost_num,
             player_pos,
             ghost_init_target,
-            old_ghost_locations,
+            old_ghost_locations, # ￥￥￥￥￥这里不要masked的！这里要真实的location
             scatter_target,
             x_size,
             y_size,
@@ -164,7 +164,7 @@ def check_ghost_wall_collisions(
     ghost_num: int,
     pacman_pos: Position,
     init_target: chex.Array,
-    old_ghost_locations: chex.Array,
+    old_ghost_locations: chex.Array, # ￥￥￥￥￥一样的，真实的
     scatter_target: chex.Array,
     x_size: int,
     y_size: int,
@@ -203,7 +203,7 @@ def check_ghost_wall_collisions(
 
     # Block old paths so ghosts don't backtrack
     ghost_mask = jnp.any(ghost_p != old_ghost_location, axis=1)
-
+    #  ￥￥￥￥￥ 下面是四个鬼的定义和移动逻辑，这个不用改，上面下面需要的都是真实值
     # For ghost 0: Move to closest tile to pacman
     def red_ghost(pacman_pos: Position) -> Tuple[chex.Array, chex.Array]:
         """
@@ -344,7 +344,7 @@ def check_ghost_collisions(
         og_pos: chex.Array,
         state: State,
         ghost_eaten: chex.Numeric,
-        old_ghost_pos: chex.Array,
+        old_ghost_pos: chex.Array, # ￥￥￥￥￥这里不要masked的！这里要真实的location
     ) -> Tuple[chex.Array, chex.Numeric, chex.Numeric, chex.Numeric, chex.Numeric]:
         """Check if ghost has collided with player"""
         frightened_time = state.frightened_state_time
@@ -415,7 +415,7 @@ def get_directions(pacman_position: Position, ghost_position: chex.Array) -> che
             ghost_position[1] - pacman_position.x,
         ]
     )
-    return direction
+    return direction # ￥￥￥￥￥这里不要masked的！这里要真实的location
 
 
 def player_step(state: State, action: int, x_size: int, y_size: int, steps: int = 1) -> Position:

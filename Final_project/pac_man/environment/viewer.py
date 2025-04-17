@@ -29,7 +29,7 @@ from numpy.typing import NDArray
 from maze_rendering import MazeViewer
 from types import Observation, State
 
-
+# # ￥￥￥￥￥这里是渲染可视化部分，这部分需要的是masked之后的，也就是鬼时隐时现的情况，建议在location那个地方即时访问visible属性然后mask现在这个代码的location，然后用mask_location进行后续内容
 class PacManViewer(MazeViewer):
     FIGURE_SIZE = (4.0, 4.0)
 
@@ -171,7 +171,7 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     layer_3 = (1 - observation.grid) * 0.6
 
     player_loc = observation.player_locations
-    ghost_pos = observation.ghost_locations
+    ghost_pos = observation.ghost_locations # ￥￥￥￥￥！！！！！这个地方要mask的结果，mask的结果不可见，可能需要指定一个颜色或者直接不渲染，这个部分我不太清楚渲染和ui的逻辑可能需要你们想想mask了之后不可见的内容应该设置成什么参数或者修改逻辑？
     pellets_loc = observation.power_up_locations
     is_scared = observation.frightened_state_time
     idx = observation.pellet_locations

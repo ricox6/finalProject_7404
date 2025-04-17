@@ -29,7 +29,7 @@ import tensorboardX
 from neptune import new as neptune
 
 
-class Logger(AbstractContextManager):
+class Logger(AbstractContextManager): # save the checkpoint
     def __init__(self, save_checkpoint: bool, checkpoint_file_name: str = "training_state"):
         self.save_checkpoint = save_checkpoint
         self.checkpoint_file_name = checkpoint_file_name
@@ -156,7 +156,8 @@ class TerminalLogger(Logger):
 
 
 class ListLogger(Logger):
-    """Logs to a dictionary of histories as lists."""
+    """Logs to a dictionary of histories as lists. ListLogger 是 Logger 的一个子类，用于将日志记录到一个字典中。
+    日志以时间序列的形式存储，每个指标对应一个列表，方便后续分析或绘图。"""
 
     def __init__(self, save_checkpoint: bool = False) -> None:
         super().__init__(save_checkpoint=save_checkpoint)
@@ -176,6 +177,8 @@ class ListLogger(Logger):
 class TensorboardLogger(Logger):
     """Logs to tensorboard. To view logs, run a command like:
     tensorboard --logdir jumanji/training/outputs/{date}/{time}/{name}/
+    TensorboardLogger 是 Logger 的一个子类，用于将日志记录到 TensorBoard。
+    可以通过 TensorBoard 的可视化工具实时查看训练指标
     """
 
     def __init__(self, name: str, save_checkpoint: bool = False) -> None:

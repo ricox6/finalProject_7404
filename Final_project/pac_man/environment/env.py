@@ -185,7 +185,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             maximum=True,
             name="action_mask",
         )
-
+        # ￥￥￥￥￥ 考虑这个地方要不要加一个masked loaction,还是在需要获取mask的地方再去计算，observation涉及到很多地方，如果觉得太麻烦可以不动这里，把mask逻辑写在后面
         frightened_state_time = specs.Array((), jnp.int32, "frightened_state_time")
         score = specs.Array((), jnp.int32, "frightened_state_time")
 
@@ -200,7 +200,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             pellet_locations=pellet_locations,
             action_mask=action_mask,
             score=score,
-        )
+        ) # ￥￥￥￥￥
 
     @cached_property
     def action_spec(self) -> specs.DiscreteArray:
@@ -287,7 +287,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             transition,
             reward,
             observation,
-        )
+        ) # ￥￥￥￥￥这里需要加个计数step的（按照我在文档中写的方案的话，后续需要访问这个step个数 % 5==0则改变可见性），或者其他策略动态调整鬼的可见性也可以
 
         return next_state, timestep
 
@@ -508,7 +508,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             pellet_locations=state.pellet_locations,
             action_mask=action_mask,
             score=state.score,
-        )
+        ) # ￥￥￥￥￥
 
     def render(self, state: State) -> Any:
         """Render the given state of the environment.
