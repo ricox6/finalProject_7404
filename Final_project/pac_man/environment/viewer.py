@@ -196,11 +196,17 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
 
     layers = (layer_1, layer_2, layer_3)
 
+    # %%%%%% 新增：获取幽灵可见性字段（需确保 Observation/State 包含 ghost_visible）
+    ghost_visible = observation.ghost_visible  # [4,] 布尔数组
+
     def set_ghost_colours(
         layers: chex.Array,
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
+            # %%%%%% 如果幽灵不可见，跳过渲染
+            if not ghost_visible[i]:
+                continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
 
@@ -214,6 +220,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
+            # %%%%%% 如果幽灵不可见，跳过渲染
+            if not ghost_visible[i]:
+                continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
             layer_1 = layer_1.at[x, y].set(0)
@@ -258,6 +267,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
+            # %%%%%% 如果幽灵不可见，跳过渲染
+            if not ghost_visible[i]:
+                continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
             c = x * n + 1
@@ -293,6 +305,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
+            # %%%%%% 如果幽灵不可见，跳过渲染
+            if not ghost_visible[i]:
+                continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
 

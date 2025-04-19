@@ -136,6 +136,8 @@ class AsciiGenerator(Generator):
         ghost_init_targets = self.init_targets
         ghost_actions = jnp.array([1, 1, 1, 1])
         old_ghost_locations = ghost_locations
+        ghost_visible = jnp.ones(4, dtype=bool)  # %%%%%% [True, True, True, True]
+        ghost_masked_locations = ghost_locations  # %%%%%% 初始未掩码
 
         # Build the state.
         return State(
@@ -147,6 +149,8 @@ class AsciiGenerator(Generator):
             power_up_locations=power_up_locations,
             player_locations=player_locations,
             ghost_locations=ghost_locations,
+            ghost_visible=ghost_visible,  # %%%%%% 新增字段
+            ghost_masked_locations=ghost_masked_locations,  # %%%%%% 新增字段
             old_ghost_locations=old_ghost_locations,
             initial_player_locations=player_locations,
             initial_ghost_positions=ghost_locations,

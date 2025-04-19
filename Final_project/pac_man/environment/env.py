@@ -188,6 +188,8 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         # ￥￥￥￥￥ 考虑这个地方要不要加一个masked loaction,还是在需要获取mask的地方再去计算，observation涉及到很多地方，如果觉得太麻烦可以不动这里，把mask逻辑写在后面
         frightened_state_time = specs.Array((), jnp.int32, "frightened_state_time")
         score = specs.Array((), jnp.int32, "frightened_state_time")
+        ghost_visible = specs.Array(shape=(4,), dtype=bool, name="ghost_visible") # %%%%%% 新增可见性规格
+
 
         return specs.Spec(
             Observation,
@@ -200,6 +202,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             pellet_locations=pellet_locations,
             action_mask=action_mask,
             score=score,
+            ghost_visible=ghost_visible,  # %%%%%% 新增可见性规格
         ) # ￥￥￥￥￥
 
     @cached_property
@@ -237,6 +240,14 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
 
         state = self.generator(key)
 
+        # %%%%%% 初始化幽灵可见性和掩码位置
+        ghost_visible = jnp.ones(4, dtype=bool)  # 初始全部可见
+        ghost_masked_locations = state.ghost_locations  # 初始未掩码
+        state = state.replace(
+            ghost_visible=ghost_visible,
+            ghost_masked_locations=ghost_masked_locations,
+        )
+
         # Generate observation
         obs = self._observation_from_state(state)
 
@@ -261,6 +272,30 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             state: the new state of the environment.
             the next timestep to be observed.
         """
+
+        # %%%%%% 新增：更新幽灵可见性
+        def toggle_visibility(state: State) -> State:
+            # 每5步切换可见性
+            new_ghost_visible = ~state.ghost_visible
+            # 计算掩码位置（不可见时设为-1）
+            ghost_masked_locations = jnp.where(
+                new_ghost_visible[:, None],
+                state.ghost_locations,
+                jnp.full((4, 2), -1)
+            )
+            return state.replace(
+                ghost_visible=new_ghost_visible,
+                ghost_masked_locations=ghost_masked_locations,
+                step_count=state.step_count + 1
+            )
+
+        # %%%%%% 判断是否需要切换可见性（每5步）
+        state = jax.lax.cond(
+            (state.step_count % 5) == 0,
+            toggle_visibility,
+            lambda s: s.replace(step_count=s.step_count + 1),  # 仅递增步数
+            state
+        )
 
         # Collect updated state based on environment dynamics
         updated_state, collision_rewards = self._update_state(state, action)
@@ -502,12 +537,13 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return Observation(
             grid=state.grid,
             player_locations=state.player_locations,
-            ghost_locations=state.ghost_locations,
+            ghost_locations=state.ghost_masked_locations,  # %%%%%% 使用掩码后的位置
             power_up_locations=state.power_up_locations,
             frightened_state_time=state.frightened_state_time,
             pellet_locations=state.pellet_locations,
             action_mask=action_mask,
             score=state.score,
+            ghost_visible=state.ghost_visible,  # %%%%%% 新增可见性字段
         ) # ￥￥￥￥￥
 
     def render(self, state: State) -> Any:

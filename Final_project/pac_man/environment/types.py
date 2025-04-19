@@ -91,6 +91,9 @@ class State:
     step_count: jnp.int32  # ()
     ghost_eaten: chex.Array  # (4,)
     score: jnp.int32  # ()
+    ghost_visible: chex.Array  # 新增 (4,)
+    ghost_masked_locations: chex.Array # 新增 (4, 2)
+    # %%%%%% 添加 ghost_visible（可见性标记）和 ghost_masked_locations（掩码后的位置）字段。
     # ￥￥￥￥￥ ghost_masked_locations: chex.Array, ghost_visible: jnp.array([True, True, True, True])
 
 
@@ -115,4 +118,5 @@ class Observation(NamedTuple):
     pellet_locations: chex.Array
     action_mask: chex.Array
     score: jnp.int32  # ()
+    ghost_visible: chex.Array # %%%%%% [4,] 布尔数组，表示幽灵可见性
     # ￥￥￥￥￥ 这个地方根据env里面的observation改，如果那里没加这里就不要动，但是其实为了统一我是建议都加上，虽然会麻烦但是不会出错，不然debug很痛苦
