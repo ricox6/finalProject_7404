@@ -40,6 +40,7 @@ def ghost_move(
     key, ghost_key_0, ghost_key_1, ghost_key_2, ghost_key_3 = jax.random.split(key, 5)
     ghost_keys = jnp.array([ghost_key_0, ghost_key_1, ghost_key_2, ghost_key_3])
     ghost_pos = state.ghost_locations
+    old_ghost_locations = state.old_ghost_locations  # %%%%%% 真实位置
     player_pos = state.player_locations
     start_time = state.ghost_starts
     ghost_paths = []
@@ -54,6 +55,7 @@ def ghost_move(
         player_pos: chex.Array,
         ghost_init_target: chex.Array,
         old_ghost_locations: chex.Array, # ￥￥￥￥￥这里不要masked的！这里要真实的location，这里都是对真实情况的操作，无视可见不可见状态，处理真实的移动和碰撞！
+            # %%%%%% 疑问：在env的step方法里，我在调用 _update_state 前保存 ghost_locations，避免移动后的新位置覆盖 old_ghost_locations，是否这里就不用重复去写？我自己先再看一下
         ghost_start: chex.Array,
         scatter_target: chex.Array,
     ) -> Tuple[chex.Array, int]:

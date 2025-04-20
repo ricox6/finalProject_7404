@@ -272,6 +272,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             state: the new state of the environment.
             the next timestep to be observed.
         """
+        state = state.replace(old_ghost_locations=state.ghost_locations)  # %%%%%% 保存当前幽灵的真实位置到 old_ghost_locations
 
         # %%%%%% 新增：更新幽灵可见性
         def toggle_visibility(state: State) -> State:
