@@ -55,7 +55,8 @@ def ghost_move(
         player_pos: chex.Array,
         ghost_init_target: chex.Array,
         old_ghost_locations: chex.Array, # ￥￥￥￥￥这里不要masked的！这里要真实的location，这里都是对真实情况的操作，无视可见不可见状态，处理真实的移动和碰撞！
-            # %%%%%% 疑问：在env的step方法里，我在调用 _update_state 前保存 ghost_locations，避免移动后的新位置覆盖 old_ghost_locations，是否这里就不用重复去写？我自己先再看一下
+    # %%%%%% 疑问：在env的step方法里，我在调用 _update_state 前保存 ghost_locations，避免移动后的新位置覆盖 old_ghost_locations，是否这里就不用重复去写？我自己先再看一下
+    # %%%%%% 加入一行后，old_ghost_locations 直接从 state.old_ghost_locations 获取，并作为参数传递给 check_ghost_wall_collisions
         ghost_start: chex.Array,
         scatter_target: chex.Array,
     ) -> Tuple[chex.Array, int]:
@@ -152,7 +153,7 @@ def ghost_move(
         ghost_nums,
         player_pos,
         jnp.array(ghost_init_targets),
-        jnp.array(state.old_ghost_locations),
+        jnp.array(state.old_ghost_locations),  # %%%%%% 直接传递整个旧位置数组
         start_time,
         scatter_targets,
     )
@@ -167,6 +168,8 @@ def check_ghost_wall_collisions(
     pacman_pos: Position,
     init_target: chex.Array,
     old_ghost_locations: chex.Array, # ￥￥￥￥￥一样的，真实的
+    # %%%%%% 这些部分chex.Array 是用于 JAX 数组的类型标注工具。
+    # %%%%%% old_ghost_locations 无需修改，因其已通过 env.py 正确初始化为真实位置，且 utils.py 的函数逻辑正确使用该参数。
     scatter_target: chex.Array,
     x_size: int,
     y_size: int,
@@ -390,7 +393,7 @@ def check_ghost_collisions(
         col_reward = col_reward * edible
         return path, ghost_init_steps, done, col_reward, ghost_eaten
 
-    old_ghost_positions = state.old_ghost_locations
+    old_ghost_positions = state.old_ghost_locations  # %%%%%% 真实位置
     ghost_positions, ghost_init, dones, col_rewards, ghost_eaten = jax.vmap(
         check_collisions, in_axes=(0, None, 0, None, 0, 0)
     )(
