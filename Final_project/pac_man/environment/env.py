@@ -246,8 +246,9 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         state = state.replace(
             ghost_visible=ghost_visible,
             ghost_masked_locations=ghost_masked_locations,
+            old_ghost_locations=state.ghost_locations,
         )
-
+        # %%%%%% 在 reset 方法中初始化
         # Generate observation
         obs = self._observation_from_state(state)
 
@@ -272,7 +273,9 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             state: the new state of the environment.
             the next timestep to be observed.
         """
-        state = state.replace(old_ghost_locations=state.ghost_locations)  # %%%%%% 保存当前幽灵的真实位置到 old_ghost_locations
+        current_ghost_locations = state.ghost_locations
+        state = state.replace(old_ghost_locations=current_ghost_locations)
+        # %%%%%% 保存当前幽灵的真实位置到 old_ghost_locations,并在 step 方法中更新
 
         # %%%%%% 新增：更新幽灵可见性
         def toggle_visibility(state: State) -> State:
