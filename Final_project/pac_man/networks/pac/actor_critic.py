@@ -19,6 +19,10 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 import numpy as np
+from typing import NamedTuple, Tuple
+import optax
+
+from jumanji.wrappers import AutoResetWrapper
 
 from jumanji.environments.routing.pac_man import Observation, PacMan
 from Final_project.pac_man.networks.actor_critic import (
@@ -31,28 +35,36 @@ from Final_project.pac_man.networks.parametric_distribution import (
 
 
 def make_actor_critic_networks_pacman(
-    pac_man: PacMan,
-    num_channels: Sequence[int],
-    policy_layers: Sequence[int],
-    value_layers: Sequence[int],
+        pac_man: PacMan,
+        num_channels: Sequence[int],
+        policy_layers: Sequence[int],
+        value_layers: Sequence[int],
+        lstm_hidden_size: int = 128
 ) -> ActorCriticNetworks:
     """Make actor-critic networks for the `PacMan` environment."""
     num_actions = np.asarray(pac_man.action_spec.num_values)
     parametric_action_distribution = CategoricalParametricDistribution(num_actions=num_actions)
+
+    lstm_kwargs = {"lstm_hidden_size": lstm_hidden_size}
+
     policy_network = make_network_pac_man(
         pac_man=pac_man,
         critic=False,
         conv_n_channels=num_channels,
         mlp_units=policy_layers,
         num_actions=num_actions,
+        **lstm_kwargs
     )
+
     value_network = make_network_pac_man(
         pac_man=pac_man,
         critic=True,
         conv_n_channels=num_channels,
         mlp_units=value_layers,
         num_actions=num_actions,
+        **lstm_kwargs
     )
+
     return ActorCriticNetworks(
         policy_network=policy_network,
         value_network=value_network,
@@ -128,31 +140,38 @@ def process_image(observation: Observation) -> chex.Array:
 
     return rgb
 
+class RNNState(NamedTuple):
+    hidden: chex.Array
+    cell: chex.Array
+
 
 def make_network_pac_man(
-    pac_man: PacMan,
-    critic: bool,
-    conv_n_channels: Sequence[int],
-    mlp_units: Sequence[int],
-    num_actions: int,
+        pac_man: PacMan,
+        critic: bool,
+        conv_n_channels: Sequence[int],
+        mlp_units: Sequence[int],
+        num_actions: int,
+        lstm_hidden_size: int = 128
 ) -> FeedForwardNetwork:
-    def network_fn(observation: Observation) -> chex.Array:
+
+    def network_fn(
+            observation: Observation,
+            prev_state: RNNState
+    ) -> Tuple[chex.Array, RNNState]:
+
         conv_layers = [
-            [
-                hk.Conv2D(output_channels, (3, 3)),
-                jax.nn.relu,
-            ]
+            [hk.Conv2D(output_channels, (3, 3)), jax.nn.relu]
             for output_channels in conv_n_channels
         ]
-        torso = hk.Sequential(
-            [
-                *[layer for conv_layer in conv_layers for layer in conv_layer],
-                hk.Flatten(),
-            ]
-        )
 
-        rgb_observation = process_image(observation)  # (B, G, G, 3)
+        torso = hk.Sequential([
+            *[layer for conv_layer in conv_layers for layer in conv_layer],
+            hk.Flatten(),
+        ])
+
+        rgb_observation = process_image(observation)
         obs = rgb_observation.astype(float)
+        embedding = torso(obs)
 
         # Get player position, scatter_time and ghost locations
         player_pos = jnp.array([observation.player_locations.x, observation.player_locations.y])
@@ -162,22 +181,70 @@ def make_network_pac_man(
         ghost_locations_x = observation.ghost_locations[:, :, 0]
         ghost_locations_y = observation.ghost_locations[:, :, 1]
 
-        # Get shared embedding from RGB data
-        embedding = torso(obs)  # (B, H)
-
         # Concatenate with vector data
-        output = output = jnp.concatenate(
+        output = jnp.concatenate(
             [embedding, player_pos, ghost_locations_x, ghost_locations_y, scatter_time],
             axis=-1,
         )  # (B, H+...)
 
+        # add lstm
+        lstm = hk.LSTM(lstm_hidden_size)
+        features, new_state = lstm(output, prev_state)
+
         if critic:
             head = hk.nets.MLP((*mlp_units, 1), activate_final=False)
-            return jnp.squeeze(head(output), axis=-1)
+            value = jnp.squeeze(head(features), axis=-1)
+            return value, RNNState(*new_state)
         else:
             head = hk.nets.MLP((*mlp_units, num_actions), activate_final=False)
-            logits = head(output)
-            return jnp.where(observation.action_mask, logits, jnp.finfo(jnp.float32).min)
+            logits = head(features)
+            masked_logits = jnp.where(
+                observation.action_mask,
+                logits,
+                jnp.finfo(jnp.float32).min
+            )
+            return masked_logits, RNNState(*new_state)
 
-    init, apply = hk.without_apply_rng(hk.transform(network_fn))
-    return FeedForwardNetwork(init=init, apply=apply)
+    def init_fn(rng_key, dummy_obs):
+        """Network initialization with state initialization"""
+        net = hk.transform(network_fn)
+        params = net.init(rng_key, dummy_obs,
+                          RNNState(
+                              hidden=jnp.zeros(lstm_hidden_size),
+                              cell=jnp.zeros(lstm_hidden_size)
+                          ))
+        return params
+
+    def apply_fn(params, obs, state):
+        """Network applications with state processing"""
+        net = hk.transform(network_fn)
+        return net.apply(params, None, obs, state)
+
+    return FeedForwardNetwork(init=init_fn, apply=apply_fn)
+
+
+def make_initial_state(batch_size: int, lstm_hidden_size: int) -> RNNState:
+    """Create the initial LSTM state"""
+    return RNNState(
+        hidden=jnp.zeros((batch_size, lstm_hidden_size)),
+        cell=jnp.zeros((batch_size, lstm_hidden_size))
+    )
+
+
+def unroll_network(
+        network: FeedForwardNetwork,
+        params: hk.Params,
+        observations: Observation,
+        initial_state: RNNState
+) -> Tuple[chex.Array, RNNState]:
+    """Expand the network to process sequential data"""
+
+    def step(carry, obs):
+        state = carry
+        output, new_state = network.apply(params, obs, state)
+        return new_state, output
+
+    final_state, outputs = jax.lax.scan(
+        step, initial_state, observations
+    )
+    return outputs, final_state
