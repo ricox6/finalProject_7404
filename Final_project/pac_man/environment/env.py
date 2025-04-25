@@ -189,6 +189,11 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         frightened_state_time = specs.Array((), jnp.int32, "frightened_state_time")
         score = specs.Array((), jnp.int32, "frightened_state_time")
         ghost_visible = specs.Array(shape=(4,), dtype=bool, name="ghost_visible") # %%%%%% 新增可见性规格
+        ghost_masked_locations = jnp.where(
+            ghost_visible[:, None],
+            ghost_locations,
+            jnp.full((4, 2), -1)
+        )
 
 
         return specs.Spec(
@@ -203,6 +208,7 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             action_mask=action_mask,
             score=score,
             ghost_visible=ghost_visible,  # %%%%%% 新增可见性规格
+            ghost_masked_locations=ghost_masked_locations # %%%%%% 新增可见性规格
         ) # ￥￥￥￥￥
 
     @cached_property
@@ -548,13 +554,14 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return Observation(
             grid=state.grid,
             player_locations=state.player_locations,
-            ghost_locations=ghost_masked_locations,  # %%%%%% 使用掩码后的位置
+            ghost_locations=state.ghost_locations,  # %%%%%% 使用掩码后的位置
             power_up_locations=state.power_up_locations,
             frightened_state_time=state.frightened_state_time,
             pellet_locations=state.pellet_locations,
             action_mask=action_mask,
             score=state.score,
             ghost_visible=state.ghost_visible,  # %%%%%% 新增可见性字段
+            ghost_masked_locations=state.ghost_masked_locations
         ) # ￥￥￥￥￥
 
     def render(self, state: State) -> Any:

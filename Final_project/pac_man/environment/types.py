@@ -92,7 +92,7 @@ class State:
     ghost_eaten: chex.Array  # (4,)
     score: jnp.int32  # ()
     ghost_visible: chex.Array  # 新增 (4,)
-    # *** ghost_masked_locations: chex.Array # 新增 (4, 2)
+    ghost_masked_locations: chex.Array # 新增 (4, 2)
     # %%%%%% 添加 ghost_visible（可见性标记）和 ghost_masked_locations（掩码后的位置）字段。
     # ￥￥￥￥￥ ghost_masked_locations: chex.Array, ghost_visible: jnp.array([True, True, True, True])
 

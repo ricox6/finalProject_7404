@@ -153,7 +153,7 @@ def ghost_move(
         ghost_nums,
         player_pos,
         jnp.array(ghost_init_targets),
-        jnp.array(state.old_ghost_locations),  # %%%%%% 直接传递整个旧位置数组
+        jnp.array(old_ghost_locations),  # %%%%%% 直接传递整个旧位置数组
         start_time,
         scatter_targets,
     )
