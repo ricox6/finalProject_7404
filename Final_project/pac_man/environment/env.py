@@ -290,16 +290,18 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             return state.replace(
                 ghost_visible=new_ghost_visible,
                 ghost_masked_locations=ghost_masked_locations,
-                step_count=state.step_count + 1
+                # *** 去除step_count=state.step_count + 1
             )
 
         # %%%%%% 判断是否需要切换可见性（每5步）
         state = jax.lax.cond(
             (state.step_count % 5) == 0,
             toggle_visibility,
-            lambda s: s.replace(step_count=s.step_count + 1),  # 仅递增步数
+            lambda s: s,   # *** .replace(step_count=s.step_count + 1), 不切换可见性时，直接返回原状态
             state
         )
+        # *** 移除冗余的 step_count 更新：在 toggle_visibility 中不再修改 step_count。
+        # *** 在 jax.lax.cond 的 false 分支中直接返回原状态（无需递增 step_count）。
 
         # Collect updated state based on environment dynamics
         updated_state, collision_rewards = self._update_state(state, action)
@@ -538,10 +540,15 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
     def _observation_from_state(self, state: State) -> Observation:
         """Create an observation from the state of the environment."""
         action_mask = self._compute_action_mask(state).astype(bool)
+        ghost_masked_locations = jnp.where(
+            state.ghost_visible[:, None],
+            state.ghost_locations,
+            jnp.full((4, 2), -1)
+        )       # *** 直接生成
         return Observation(
             grid=state.grid,
             player_locations=state.player_locations,
-            ghost_locations=state.ghost_masked_locations,  # %%%%%% 使用掩码后的位置
+            ghost_locations=ghost_masked_locations,  # %%%%%% 使用掩码后的位置
             power_up_locations=state.power_up_locations,
             frightened_state_time=state.frightened_state_time,
             pellet_locations=state.pellet_locations,
