@@ -171,7 +171,7 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     layer_3 = (1 - observation.grid) * 0.6
 
     player_loc = observation.player_locations
-    ghost_pos = observation.ghost_locations # ￥￥￥￥￥！！！！！这个地方要mask的结果，mask的结果不可见，可能需要指定一个颜色或者直接不渲染，这个部分我不太清楚渲染和ui的逻辑可能需要你们想想mask了之后不可见的内容应该设置成什么参数或者修改逻辑？
+    ghost_pos = observation.ghost_masked_locations # ￥￥￥￥￥！！！！！这个地方要mask的结果，mask的结果不可见，可能需要指定一个颜色或者直接不渲染，这个部分我不太清楚渲染和ui的逻辑可能需要你们想想mask了之后不可见的内容应该设置成什么参数或者修改逻辑？
     pellets_loc = observation.power_up_locations
     is_scared = observation.frightened_state_time
     idx = observation.pellet_locations
@@ -204,8 +204,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
-            # %%%%%% 如果幽灵不可见，跳过渲染
-            if not ghost_visible[i]:
+            # 直接检查位置是否为无效值（如 -1）
+            pos = ghost_pos[i]
+            if jnp.all(pos == -1):  # 如果位置被掩码，跳过渲染
                 continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
@@ -220,8 +221,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
-            # %%%%%% 如果幽灵不可见，跳过渲染
-            if not ghost_visible[i]:
+            # 直接检查位置是否为无效值（如 -1）
+            pos = ghost_pos[i]
+            if jnp.all(pos == -1):  # 如果位置被掩码，跳过渲染
                 continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
@@ -267,8 +269,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
-            # %%%%%% 如果幽灵不可见，跳过渲染
-            if not ghost_visible[i]:
+            # 直接检查位置是否为无效值（如 -1）
+            pos = ghost_pos[i]
+            if jnp.all(pos == -1):  # 如果位置被掩码，跳过渲染
                 continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
@@ -305,8 +308,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
-            # %%%%%% 如果幽灵不可见，跳过渲染
-            if not ghost_visible[i]:
+            # 直接检查位置是否为无效值（如 -1）
+            pos = ghost_pos[i]
+            if jnp.all(pos == -1):  # 如果位置被掩码，跳过渲染
                 continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
