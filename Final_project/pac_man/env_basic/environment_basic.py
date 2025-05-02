@@ -23,8 +23,8 @@ from typing import Any, Generic, Tuple, TypeVar
 import chex
 from typing_extensions import Protocol
 
-import specs_basic as specs
-from types_basic import Observation, TimeStep
+from . import specs_basic as specs
+from Final_project.pac_man.env_basic.types_basic import Observation, TimeStep
 
 
 class StateProtocol(Protocol):

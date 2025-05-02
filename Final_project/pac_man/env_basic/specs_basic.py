@@ -37,8 +37,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from pytrees import is_equal_pytree
-from types_basic import get_valid_dtype
+from Final_project.pac_man.env_basic.pytrees import is_equal_pytree
+from Final_project.pac_man.env_basic.types_basic import get_valid_dtype
 
 T = TypeVar("T")
 
