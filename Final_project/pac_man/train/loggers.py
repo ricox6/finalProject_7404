@@ -26,7 +26,8 @@ import jax.numpy as jnp
 import numpy as np
 import omegaconf
 import tensorboardX
-from neptune import new as neptune
+#from neptune import new as neptune
+import neptune
 
 
 class Logger(AbstractContextManager): # save the checkpoint

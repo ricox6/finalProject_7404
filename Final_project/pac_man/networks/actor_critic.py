@@ -14,8 +14,8 @@
 
 from typing import NamedTuple
 
-from base import FeedForwardNetwork
-from parametric_distribution import ParametricDistribution
+from .base import FeedForwardNetwork
+from .parametric_distribution import ParametricDistribution
 
 
 class ActorCriticNetworks(NamedTuple):

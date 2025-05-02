@@ -23,7 +23,7 @@ from jax import numpy as jnp
 from Final_project.pac_man.env_basic.environment_basic import Environment
 from Final_project.pac_man.agents.a2c_agent import A2CAgent
 from Final_project.pac_man.agents.base_agent import Agent
-import Final_project.pac_man.agents.random_agent as RandomAgent
+from Final_project.pac_man.agents.random_agent import RandomAgent
 from Final_project.pac_man.train.types import ActingState, ParamsState
 
 

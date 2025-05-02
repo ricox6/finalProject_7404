@@ -23,7 +23,7 @@ import optax
 import rlax
 
 from Final_project.pac_man.env_basic.environment_basic import Environment
-from base_agent import Agent
+from .base_agent import Agent
 from Final_project.pac_man.networks.actor_critic import ActorCriticNetworks
 from Final_project.pac_man.train.types import (
     ActingState,

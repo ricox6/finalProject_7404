@@ -39,7 +39,7 @@ from loggers import (
 )
 from Final_project.pac_man.networks.actor_critic import ActorCriticNetworks
 from Final_project.pac_man.networks.protocols import RandomPolicy
-from types import ActingState, TrainingState
+from Final_project.pac_man.train.types import ActingState, TrainingState
 from wrappers import MultiToSingleWrapper, VmapAutoResetWrapper
 
 def setup_logger(cfg: DictConfig) -> Logger:

@@ -34,7 +34,7 @@ from setup_train import (
     setup_training_state,
 )
 from timer import Timer
-from types import TrainingState
+from Final_project.pac_man.train.types import TrainingState
 
 
 @hydra.main(config_path="configs", config_name="config.yaml")

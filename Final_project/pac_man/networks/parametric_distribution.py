@@ -21,12 +21,12 @@ import chex
 import jax.numpy as jnp
 import numpy as np
 
-from distribution import (
+from .distribution import (
     CategoricalDistribution,
     Distribution,
     NormalDistribution,
 )
-from postprocessor import (
+from .postprocessor import (
     FactorisedActionSpaceReshapeBijector,
     IdentityBijector,
     Postprocessor,
