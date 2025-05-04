@@ -118,8 +118,14 @@ class PacManViewer(MazeViewer):
         )
 
         # Save the animation as a gif.
+        #!!!显式保存GIF
         if save_path:
-            self._animation.save(save_path)
+            self._animation.save(
+            save_path,
+            writer="pillow",  # 确保安装pillow库
+            fps=1000//interval,  # 计算帧率
+            )
+            print(f"GIF saved to {save_path}")
 
         return self._animation
 

@@ -131,6 +131,9 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         self.y_size = self.generator.y_size
         self.pellet_spaces = self.generator.pellet_spaces
         super().__init__()
+
+# !!! 确保Viewer正确初始化
+        self._viewer = PacManViewer(name="PacMan", render_mode="rgb_array")
         self._viewer = viewer or PacManViewer("Pacman", render_mode="human")
         self.time_limit = 1000 or time_limit
 
@@ -589,7 +592,13 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         Returns:
             animation.FuncAnimation: the animation object that was created.
         """
-        return self._viewer.animate(states, interval, save_path)
+        # !!! 将State转换为Viewer需要的格式（假设需要Observation）
+        observations = [state.observation for state in states]
+        return self._viewer.animate(
+        states=observations,  # 或直接传递states如果Viewer支持State
+        interval=interval,
+        save_path=save_path,
+        )
 
     def close(self) -> None:
         """Perform any necessary cleanup.
