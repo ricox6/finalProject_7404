@@ -128,7 +128,7 @@ def _setup_actor_critic_neworks(cfg: DictConfig, env: Environment) -> ActorCriti
             num_channels=cfg.env.network.num_channels,
             policy_layers=cfg.env.network.policy_layers,
             value_layers=cfg.env.network.value_layers,
-            lstm_hidden_size=128,
+            # lstm_hidden_size=128,
         )
     else:
         raise ValueError(f"Environment name not found. Got {cfg.env.name}.")
