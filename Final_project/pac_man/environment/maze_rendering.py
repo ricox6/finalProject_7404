@@ -24,7 +24,7 @@ from matplotlib.axes import Axes
 from numpy.typing import NDArray
 
 #import jumanji.environments
-from maze_generation import EMPTY, WALL
+from .maze_generation import EMPTY, WALL
 from Final_project.pac_man.env_basic.viewer_basic import Viewer
 
 

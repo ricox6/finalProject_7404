@@ -19,7 +19,7 @@ import jax
 import jax.numpy as jnp
 from jax import nn
 
-from types import Position, State
+from .types import Position, State
 
 
 def ghost_move(

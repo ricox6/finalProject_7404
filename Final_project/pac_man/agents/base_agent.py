@@ -13,13 +13,13 @@
 # limitations under the License.
 
 import abc
-from typing import Callable, Dict, Optional, Tuple
-
+from typing import Callable, Dict, Optional, Tuple, Any
 import chex
 import haiku as hk
 import jax
+from sympy import sequence
 
-from Final_project.pac_man.train.types import ParamsState, TrainingState
+from Final_project.pac_man.train.types import ParamsState, TrainingState,LSTMState
 
 
 class Agent(abc.ABC):
@@ -33,7 +33,7 @@ class Agent(abc.ABC):
             f"got total_batch_size={total_batch_size} and num_devices={num_devices}."
         )
         self.batch_size_per_device = total_batch_size // num_devices
-
+        self.sequence_length = 10
     @abc.abstractmethod
     def init_params(self, key: chex.PRNGKey) -> Optional[ParamsState]:
         pass
@@ -44,8 +44,9 @@ class Agent(abc.ABC):
 
     @abc.abstractmethod
     def make_policy(
-        self,
-        policy_params: Optional[hk.Params],
-        stochastic: bool = True,
-    ) -> Callable:
+            self,
+            policy_params: hk.Params,
+            stochastic: bool = True,
+    ) -> Callable[[Any, chex.PRNGKey, Optional[LSTMState]],
+    Tuple[chex.Array, Any, Optional[LSTMState]]]:
         pass

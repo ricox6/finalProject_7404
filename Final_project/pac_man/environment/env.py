@@ -23,15 +23,15 @@ from chex import PRNGKey
 
 import Final_project.pac_man.env_basic.specs_basic as specs
 from Final_project.pac_man.env_basic.environment_basic import Environment
-from constants import DEFAULT_MAZE, MOVES
-from generator import AsciiGenerator, Generator
-from types import Observation, Position, State
-from utils import (
+from .constants import DEFAULT_MAZE, MOVES
+from .generator import AsciiGenerator, Generator
+from .types import Observation, Position, State
+from .utils import (
     check_ghost_collisions,
     ghost_move,
     player_step,
 )
-from viewer import PacManViewer
+from .viewer import PacManViewer
 from Final_project.pac_man.env_basic.types_basic import TimeStep, restart, termination, transition
 from Final_project.pac_man.env_basic.viewer_basic import Viewer
 

@@ -1,11 +1,10 @@
-'''from typing import Sequence, Tuple, Optional, NamedTuple, Any
-
+from typing import Sequence, Tuple, Optional, NamedTuple, List
 import chex
 import haiku as hk
 import jax
+from jax import lax
 import jax.numpy as jnp
-import numpy as np
-
+# import numpy as np
 from jumanji.environments.routing.pac_man import Observation, PacMan
 from Final_project.pac_man.networks.actor_critic import (
     ActorCriticNetworks,
@@ -14,272 +13,7 @@ from Final_project.pac_man.networks.actor_critic import (
 from Final_project.pac_man.networks.parametric_distribution import (
     CategoricalParametricDistribution,
 )
-
-
-class LSTMState(NamedTuple):
-    """LSTM state for the recurrent network."""
-    hidden: chex.Array
-    cell: chex.Array
-
-def make_actor_critic_networks_pacman(
-        pac_man: PacMan,
-        num_channels: Sequence[int],
-        policy_layers: Sequence[int],
-        value_layers: Sequence[int],
-        lstm_hidden_size: int = 128,
-) -> ActorCriticNetworks:
-    """Make actor-critic networks for the `PacMan` environment with LSTM layer."""
-    num_actions = jnp.array(pac_man.action_spec.num_values)
-    parametric_action_distribution = CategoricalParametricDistribution(num_actions=num_actions)
-    policy_network = make_network_pac_man(
-        pac_man=pac_man,
-        critic=False,
-        conv_n_channels=num_channels,
-        mlp_units=policy_layers,
-        num_actions=num_actions,
-        lstm_hidden_size=lstm_hidden_size,
-    )
-    value_network = make_network_pac_man(
-        pac_man=pac_man,
-        critic=True,
-        conv_n_channels=num_channels,
-        mlp_units=value_layers,
-        num_actions=num_actions,
-        lstm_hidden_size=lstm_hidden_size,
-    )
-    return ActorCriticNetworks(
-        policy_network=policy_network,
-        value_network=value_network,
-        parametric_action_distribution=parametric_action_distribution,
-    )
-
-def process_image(observation) -> chex.Array:
-    """JAX安全的process_image版本"""
-
-    # 确保所有输入字段都是 jnp.ndarray，且类型合理
-    grid = jnp.array(observation.grid, dtype=jnp.float32)
-    player_x = jnp.int32(observation.player_locations.x)
-    player_y = jnp.int32(observation.player_locations.y)
-    ghost_pos = jnp.array(observation.ghost_locations, dtype=jnp.int32)  # shape (4, 2)
-    pellets_loc = jnp.array(observation.power_up_locations, dtype=jnp.int32)  # shape (M, 2)
-    frightened_time = jnp.array(observation.frightened_state_time, dtype=jnp.float32)
-    pellet_locations = jnp.array(observation.pellet_locations, dtype=jnp.int32)  # shape (K, 2)
-    action_mask = jnp.array(observation.action_mask, dtype=bool)
-
-    layer_1 = grid * 0.66
-    layer_2 = grid * 0.0
-    layer_3 = grid * 0.33
-
-    # 对 pellet_locations 做循环处理
-    def pellet_body(i, layers):
-        l1, l2, l3 = layers
-        loc = pellet_locations[i]
-        cond = jnp.any(loc > 0)  # 判断坐标是否有效
-
-        def true_fn(layers):
-            l1, l2, l3 = layers
-            x, y = loc[0], loc[1]
-            l3 = l3.at[y, x].set(1.0)
-            l2 = l2.at[y, x].set(0.8)
-            l1 = l1.at[y, x].set(0.6)
-            return l1, l2, l3
-
-        def false_fn(layers):
-            return layers
-
-        return jax.lax.cond(cond, true_fn, false_fn, layers)
-
-    layers = (layer_1, layer_2, layer_3)
-    layers = jax.lax.fori_loop(0, pellet_locations.shape[0], pellet_body, layers)
-    layer_1, layer_2, layer_3 = layers
-
-    # Power pellets
-    def power_pellet_body(i, layers):
-        l1, l2, l3 = layers
-        p = pellets_loc[i]
-        x, y = p[0], p[1]
-        l1 = l1.at[y, x].set(0.5)
-        l2 = l2.at[y, x].set(0.0)
-        l3 = l3.at[y, x].set(0.5)
-        return l1, l2, l3
-
-    layers = (layer_1, layer_2, layer_3)
-    layers = jax.lax.fori_loop(0, pellets_loc.shape[0], power_pellet_body, layers)
-    layer_1, layer_2, layer_3 = layers
-
-    # 设置player位置（黄色）
-    layer_1 = layer_1.at[player_y, player_x].set(1.0)
-    layer_2 = layer_2.at[player_y, player_x].set(1.0)
-    layer_3 = layer_3.at[player_y, player_x].set(0.0)
-
-    cr = jnp.array([1, 1, 0, 1], dtype=jnp.float32)
-    cg = jnp.array([0, 0.7, 1, 0.7], dtype=jnp.float32)
-    cb = jnp.array([0, 1, 1, 0.35], dtype=jnp.float32)
-
-    scatter = frightened_time[0] / 60.0  # 标量
-
-    def ghost_body(i, layers):
-        l1, l2, l3 = layers
-        x, y = ghost_pos[i, 0], ghost_pos[i, 1]
-        l1 = l1.at[y, x].set(cr[0])
-        l2 = l2.at[y, x].set(cg[0] + scatter)
-        l3 = l3.at[y, x].set(cb[0] + scatter)
-        return l1, l2, l3
-
-    layers = (layer_1, layer_2, layer_3)
-    layers = jax.lax.fori_loop(0, ghost_pos.shape[0], ghost_body, layers)
-    layer_1, layer_2, layer_3 = layers
-
-    # 清除(0,0)点
-    layer_1 = layer_1.at[0, 0].set(0.0)
-    layer_2 = layer_2.at[0, 0].set(0.0)
-    layer_3 = layer_3.at[0, 0].set(0.0)
-
-    rgb = jnp.stack([layer_1, layer_2, layer_3], axis=-1)
-    return rgb
-
-def make_network_pac_man(
-        pac_man: PacMan,
-        critic: bool,
-        conv_n_channels: Sequence[int],
-        mlp_units: Sequence[int],
-        num_actions: int,
-        lstm_hidden_size: int = 128,
-) -> FeedForwardNetwork:
-    """Create a network for the PacMan environment with an LSTM layer.
-
-    Args:
-        pac_man: PacMan environment instance
-        critic: whether this is the critic network
-        conv_n_channels: sequence of output channels for convolutional layers
-        mlp_units: sequence of units for MLP layers
-        num_actions: number of possible actions
-        lstm_hidden_size: size of the LSTM hidden state
-
-    Returns:
-        A recurrent feed-forward network
-    """
-
-    def network_fn(
-            observation: Observation,
-            state: Optional[LSTMState] = None,
-            is_training: bool = False
-    ) -> Tuple[chex.Array, LSTMState]:
-        # Create CNN layers
-        conv_layers = [
-            [
-                hk.Conv2D(output_channels, (3, 3)),
-                jax.nn.relu,
-            ]
-            for output_channels in conv_n_channels
-        ]
-
-        # Define CNN torso
-        torso = hk.Sequential(
-            [
-                *[layer for conv_layer in conv_layers for layer in conv_layer],
-                hk.Flatten(),
-            ]
-        )
-
-        # Process image observation
-        rgb_observation = process_image(observation)  # (B, G, G, 3)
-        obs = rgb_observation.astype(float)
-
-        # Extract features
-        player_pos = jnp.array([observation.player_locations.x, observation.player_locations.y])
-        player_pos = jnp.stack(player_pos, axis=-1)
-        scatter_time = observation.frightened_state_time / 60
-        scatter_time = jnp.expand_dims(scatter_time, axis=-1)
-        ghost_locations_x = observation.ghost_locations[:, :, 0]
-        ghost_locations_y = observation.ghost_locations[:, :, 1]
-
-        # Get embedding from CNN
-        embedding = torso(obs)  # (B, H)
-
-        # Concatenate with other features
-        combined_features = jnp.concatenate(
-            [embedding, player_pos, ghost_locations_x, ghost_locations_y, scatter_time],
-            axis=-1,
-        )  # (B, H+...)
-
-        # Initialize LSTM state if not provided
-        batch_size = 1  # Assuming batch size is 1 during inference
-        if state is None:
-            state = LSTMState(
-                hidden=jnp.zeros((batch_size, lstm_hidden_size)),
-                cell=jnp.zeros((batch_size, lstm_hidden_size))
-            )
-
-        # Apply LSTM
-        lstm = hk.LSTM(lstm_hidden_size)
-        lstm_output, new_state = lstm(combined_features, state)
-
-        # Apply head based on whether it's critic or actor
-        if critic:
-            head = hk.nets.MLP((*mlp_units, 1), activate_final=False)
-            output = jnp.squeeze(head(lstm_output), axis=-1)
-        else:
-            head = hk.nets.MLP((*mlp_units, num_actions), activate_final=False)
-            mask = observation.action_mask
-            logits = head(lstm_output)
-            output = jnp.where(mask, logits, jnp.finfo(jnp.float32).min)
-
-        return output, new_state
-
-    # Use hk.transform to handle parameters
-    transformed = hk.without_apply_rng(hk.transform_with_state(network_fn))
-
-    # Create wrapper functions to maintain API compatibility
-    def init_fn(
-            rng: jax.random.PRNGKey,
-            observation: Any,
-    ) -> Tuple[hk.Params, hk.State]:
-        """初始化网络参数和状态"""
-        params, state = transformed.init(rng, observation)
-        return params, state
-
-    def apply_fn(
-            params_and_state: Tuple[hk.Params, hk.State],
-            observation: Any,
-            lstm_state: Optional[Any] = None,
-    ) -> Tuple[Any, hk.State]:
-        """前向传播，返回输出和新网络状态"""
-        params, network_state = params_and_state
-        output, new_network_state = transformed.apply(params, network_state, observation, lstm_state)
-        return output, new_network_state
-
-    return FeedForwardNetwork(init=init_fn, apply=apply_fn)'''
-# Copyright 2022 InstaDeep Ltd. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-from typing import Sequence, Tuple
-
-import chex
-import haiku as hk
-import jax
-import jax.numpy as jnp
-import numpy as np
-
-from jumanji.environments.routing.pac_man import Observation, PacMan
-from Final_project.pac_man.networks.actor_critic import (
-    ActorCriticNetworks,
-    FeedForwardNetwork,
-)
-from Final_project.pac_man.networks.parametric_distribution import (
-    CategoricalParametricDistribution,
-)
+from Final_project.pac_man.train.types import LSTMState
 
 
 def make_actor_critic_networks_pacman(
@@ -287,30 +21,38 @@ def make_actor_critic_networks_pacman(
     num_channels: Sequence[int],
     policy_layers: Sequence[int],
     value_layers: Sequence[int],
+    lstm_hidden_size: int = 128,
+    sequence_length: int = 10
 ) -> ActorCriticNetworks:
-    """Make actor-critic networks for the `PacMan` environment."""
-    num_actions = np.asarray(pac_man.action_spec.num_values)
+    """Make actor-critic networks with sequence processing."""
+    num_actions = int(pac_man.action_spec.num_values)
     parametric_action_distribution = CategoricalParametricDistribution(num_actions=num_actions)
+
     policy_network = make_network_pac_man(
         pac_man=pac_man,
         critic=False,
         conv_n_channels=num_channels,
         mlp_units=policy_layers,
         num_actions=num_actions,
+        lstm_hidden_size=lstm_hidden_size,
+        sequence_length=sequence_length
     )
+
     value_network = make_network_pac_man(
         pac_man=pac_man,
         critic=True,
         conv_n_channels=num_channels,
         mlp_units=value_layers,
         num_actions=num_actions,
+        lstm_hidden_size=lstm_hidden_size,
+        sequence_length=sequence_length
     )
+
     return ActorCriticNetworks(
         policy_network=policy_network,
         value_network=value_network,
         parametric_action_distribution=parametric_action_distribution,
     )
-
 
 def process_image(observation: Observation) -> chex.Array:
     """Process the `Observation` to be usable by the critic model.
@@ -321,7 +63,6 @@ def process_image(observation: Observation) -> chex.Array:
     Returns:
         rgb: a 2D, RGB image of the current observation.
     """
-
     layer_1 = jnp.array(observation.grid) * 0.66
     layer_2 = jnp.array(observation.grid) * 0.0
     layer_3 = jnp.array(observation.grid) * 0.33
@@ -382,54 +123,225 @@ def process_image(observation: Observation) -> chex.Array:
 
 
 def make_network_pac_man(
-    pac_man: PacMan,
-    critic: bool,
-    conv_n_channels: Sequence[int],
-    mlp_units: Sequence[int],
-    num_actions: int,
+        pac_man: PacMan,
+        critic: bool,
+        conv_n_channels: Sequence[int],
+        mlp_units: Sequence[int],
+        num_actions: int,
+        lstm_hidden_size: int = 128,
+        sequence_length: int = 10
 ) -> FeedForwardNetwork:
-    def network_fn(observation: Observation) -> chex.Array:
-        conv_layers = [
-            [
-                hk.Conv2D(output_channels, (3, 3)),
-                jax.nn.relu,
-            ]
-            for output_channels in conv_n_channels
-        ]
-        torso = hk.Sequential(
-            [
-                *[layer for conv_layer in conv_layers for layer in conv_layer],
-                hk.Flatten(),
-            ]
+    """Network with built-in LSTM state handling without structural changes"""
+    '''
+    def network_fn(
+            observation_seq: List[Observation],
+            lstm_state: Optional[LSTMState] = None
+    ) -> Tuple[chex.Array, LSTMState]:
+        # 保持原有处理流程
+        batch_size = observation_seq[0].grid.shape[0] if hasattr(observation_seq[0].grid, 'shape') else 1
+
+        processed_features = []
+        for obs in observation_seq:
+            rgb_obs = process_image(obs)
+            conv_out = rgb_obs
+            print(rgb_obs.shape)
+            for dim in conv_n_channels:
+                conv_out = hk.Conv2D(dim, (3, 3))(conv_out)
+                conv_out = jax.nn.relu(conv_out)
+            conv_out = hk.Flatten()(conv_out)[0]
+
+            # 准备其他特征并确保维度一致
+            player_pos = jnp.array([obs.player_locations.x, obs.player_locations.y])  # [2]
+            ghost_pos = obs.ghost_locations.flatten()  # [8]
+            scatter_time = jnp.array([obs.frightened_state_time / 60.0])  # [1]
+
+            # 确保所有特征都是一维的
+            player_pos = jnp.reshape(player_pos, (-1,))  # 强制展平
+            ghost_pos = jnp.reshape(ghost_pos, (-1,))  # 强制展平
+            scatter_time = jnp.reshape(scatter_time, (-1,))  # 强制展平
+
+            def reduce_dimension(arr, target_dim):
+                """将1D数组压缩到目标维度"""
+                factor = arr.shape[0] // target_dim
+                return jnp.mean(arr.reshape(target_dim, factor), axis=1)
+
+            player_pos = reduce_dimension(player_pos, int(player_pos.shape[0]/batch_size))
+            ghost_pos = reduce_dimension(ghost_pos, int(ghost_pos.shape[0]/batch_size))
+            scatter_time = reduce_dimension(scatter_time, int(scatter_time.shape[0]/batch_size))
+            print(player_pos.shape, ghost_pos.shape)
+            features = jnp.concatenate([
+                conv_out,
+                player_pos,
+                ghost_pos,
+                scatter_time
+            ])
+            processed_features.append(features)
+
+        sequence = jnp.stack(processed_features)
+
+        if len(sequence.shape) != 2:
+            sequence = jnp.reshape(sequence, (sequence_length, -1))
+
+        # LSTM处理（保持原有结构）
+        lstm = hk.LSTM(lstm_hidden_size)
+
+        # 状态初始化（保持原有逻辑）
+        try:
+            a = lstm_state.hidden
+            haiku_state = lstm_state
+        except:
+            haiku_state = lstm.initial_state(1)
+
+        lstm_input = jnp.expand_dims(sequence, 1)
+        output_seq, new_haiku_state = hk.dynamic_unroll(lstm, lstm_input, haiku_state)
+
+        new_state = LSTMState(
+            hidden=jnp.asarray(new_haiku_state.hidden),  # 确保转换为JAX数组
+            cell=jnp.asarray(new_haiku_state.cell)
         )
 
-        rgb_observation = process_image(observation)  # (B, G, G, 3)
-        obs = rgb_observation.astype(float)
-
-        # Get player position, scatter_time and ghost locations
-        player_pos = jnp.array([observation.player_locations.x, observation.player_locations.y])
-        player_pos = jnp.stack(player_pos, axis=-1)
-        scatter_time = observation.frightened_state_time / 60
-        scatter_time = jnp.expand_dims(scatter_time, axis=-1)
-        ghost_locations_x = observation.ghost_locations[:, :, 0]
-        ghost_locations_y = observation.ghost_locations[:, :, 1]
-
-        # Get shared embedding from RGB data
-        embedding = torso(obs)  # (B, H)
-
-        # Concatenate with vector data
-        output = output = jnp.concatenate(
-            [embedding, player_pos, ghost_locations_x, ghost_locations_y, scatter_time],
-            axis=-1,
-        )  # (B, H+...)
+        last_output = lax.dynamic_index_in_dim(
+            output_seq,
+            index=output_seq.shape[0] - 1,  # 取最后时间步
+            axis=0,
+            keepdims=False  # 移除序列维度
+        )
 
         if critic:
             head = hk.nets.MLP((*mlp_units, 1), activate_final=False)
-            return jnp.squeeze(head(output), axis=-1)
+            output = head(last_output)
         else:
             head = hk.nets.MLP((*mlp_units, num_actions), activate_final=False)
-            logits = head(output)
-            return jnp.where(observation.action_mask, logits, jnp.finfo(jnp.float32).min)
+            logits = head(last_output)
+            action_mask = jnp.array(observation_seq[-1].action_mask[-1], bool)
+            action_mask=jnp.reshape(action_mask,(1,5))
+            output = lax.select(
+                action_mask > 0,
+                logits,
+                jnp.full_like(logits, jnp.finfo(jnp.float32).min)
+            )
 
-    init, apply = hk.without_apply_rng(hk.transform(network_fn))
-    return FeedForwardNetwork(init=init, apply=apply)
+        return output, new_state
+
+    # 使用transform_with_state确保捕获所有状态
+    transformed = hk.transform_with_state(network_fn)
+
+    def init_fn(rng: chex.PRNGKey, obs_seq: List[Observation]):
+        # 初始化参数和状态
+        params, state = transformed.init(rng, obs_seq, None)
+        return params, state
+
+    def apply_fn(params_and_state, obs_seq: List[Observation], lstm_state: Optional[LSTMState] = None):
+        # 解包参数和状态
+        params, state = params_and_state
+
+        # 应用网络并获取输出和新状态
+        (output, new_lstm_state), new_state = transformed.apply(
+            params,
+            state,
+            None,  # rng
+            obs_seq,
+            lstm_state
+        )
+
+        # 合并所有状态
+        final_state = {
+            **new_state,  # 其他网络状态（如BatchNorm）
+            'lstm': new_lstm_state  # LSTM状态
+        }
+
+        return output, final_state
+
+    return FeedForwardNetwork(init=init_fn, apply=apply_fn)'''
+
+    def network_fn(
+            observation_seq: List[Observation],
+            lstm_state: Optional[LSTMState] = None
+    ) -> Tuple[chex.Array, LSTMState]:
+        # 获取batch大小（唯一需要修改的地方）
+        batch_size = observation_seq[0].grid.shape[0] if hasattr(observation_seq[0].grid, 'shape') else 1
+
+        processed_features = []
+        for obs in observation_seq:
+            rgb_obs = process_image(obs)  # 保持原有process_image不变
+            conv_out = rgb_obs
+            for dim in conv_n_channels:
+                conv_out = hk.Conv2D(dim, (3, 3))(conv_out)
+                conv_out = jax.nn.relu(conv_out)
+            conv_out = hk.Flatten()(conv_out)  # [B, D_conv]
+
+            # 修改位置特征处理以支持batch
+            player_pos = jnp.stack([
+                obs.player_locations.x.reshape(batch_size, ),  # [B,1]
+                obs.player_locations.y.reshape(batch_size, )  # [B,1]
+            ], axis=-1)  # -> [B,2]
+
+            ghost_pos = obs.ghost_locations.reshape(batch_size, 8)  # [B,8]
+            scatter_time = (obs.frightened_state_time / 60.0).reshape(batch_size, 1)  # [B,1]
+
+            # 保持原有拼接逻辑
+            features = jnp.concatenate([
+                conv_out,  # [B, D_conv]
+                player_pos,  # [B, 2]
+                ghost_pos,  # [B, 8]
+                scatter_time  # [B, 1]
+            ], axis=-1)  # [B, D_total]
+            processed_features.append(features)
+
+        # 序列处理 [T, B, D]
+        sequence = jnp.stack(processed_features, axis=0)
+
+        # LSTM处理（保持原有结构）
+        lstm = hk.LSTM(lstm_hidden_size)
+
+        # 状态初始化（保持原有逻辑）
+        try:
+            a = lstm_state.hidden
+            haiku_state = lstm_state
+        except:
+            haiku_state = lstm.initial_state(batch_size)
+
+        # print(sequence.shape)
+        output_seq, new_haiku_state = hk.dynamic_unroll(lstm, sequence, haiku_state)
+        last_output = output_seq[-1]  # [B, D_lstm]
+
+        # 输出头处理（保持原有逻辑）
+        if critic:
+            head = hk.nets.MLP((*mlp_units, 1), activate_final=False)
+            output = head(last_output)  # [B, 1]
+        else:
+            head = hk.nets.MLP((*mlp_units, num_actions), activate_final=False)
+            logits = head(last_output)  # [B, A]
+
+            # 处理action_mask（确保维度匹配）
+            action_mask = jnp.array(observation_seq[-1].action_mask, bool)
+            if action_mask.ndim == 1:  # 如果是单样本
+                action_mask = jnp.tile(action_mask, (batch_size, 1))  # 广播到[B, A]
+
+            output = jnp.where(
+                action_mask,
+                logits,
+                jnp.finfo(jnp.float32).min
+            )
+
+        return output, LSTMState.from_haiku(new_haiku_state)
+
+
+    # 保持原有transform和函数定义不变
+    transformed = hk.transform_with_state(network_fn)
+
+
+    def init_fn(rng: chex.PRNGKey, obs_seq: List[Observation]):
+        params, state = transformed.init(rng, obs_seq, None)
+        return params, state
+
+
+    def apply_fn(params_and_state, obs_seq: List[Observation], lstm_state: Optional[LSTMState] = None):
+        params, state = params_and_state
+        (output, new_lstm_state), new_state = transformed.apply(
+            params, state, None, obs_seq, lstm_state
+        )
+        return output, {'lstm': new_lstm_state, **new_state}
+
+
+    return FeedForwardNetwork(init=init_fn, apply=apply_fn)

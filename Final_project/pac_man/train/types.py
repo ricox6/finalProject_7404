@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, NamedTuple, Optional
+from typing import Any, Dict, NamedTuple, Optional, Tuple
 
 import chex
 import haiku as hk
@@ -53,12 +53,22 @@ class ActingState(NamedTuple):
     state: Any
     timestep: TimeStep
     key: chex.PRNGKey
-    episode_count: float
-    env_step_count: float
+    episode_count: chex.Array
+    env_step_count: chex.Array
 
+
+class LSTMState(hk.LSTMState):
+    """Wrapper around Haiku's LSTMState to maintain compatibility."""
+
+    @classmethod
+    def from_haiku(cls, haiku_state: hk.LSTMState) -> 'LSTMState':
+        return cls(haiku_state.hidden, haiku_state.cell)
+
+    def to_haiku(self) -> hk.LSTMState:
+        return hk.LSTMState(self.hidden, self.cell)
 
 class TrainingState(NamedTuple):
-    """Container for data used during the training of an agent acting in an environment."""
-
-    params_state: Optional[ParamsState]
+    params_state: ParamsState
     acting_state: ActingState
+    lstm_state: LSTMState
+

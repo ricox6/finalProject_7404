@@ -17,7 +17,7 @@ from typing import Any, List
 import chex
 import jax.numpy as jnp
 
-from types import Position, State
+from .types import Position, State
 
 
 # flake8: noqa: C901

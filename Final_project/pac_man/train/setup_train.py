@@ -19,11 +19,12 @@ import jax
 import jax.numpy as jnp
 import optax
 from omegaconf import DictConfig
+import haiku as hk
 
 import jumanji
 from Final_project.pac_man.env_basic.environment_basic import Environment
 
-from jumanji.environments import PacMan
+from Final_project.pac_man.environment.env import PacMan
 
 from jumanji.training import networks
 from Final_project.pac_man.agents.a2c_agent import A2CAgent
@@ -39,7 +40,7 @@ from loggers import (
 )
 from Final_project.pac_man.networks.actor_critic import ActorCriticNetworks
 from Final_project.pac_man.networks.protocols import RandomPolicy
-from Final_project.pac_man.train.types import ActingState, TrainingState
+from Final_project.pac_man.train.types import ActingState, TrainingState, LSTMState
 from wrappers import MultiToSingleWrapper, VmapAutoResetWrapper
 
 def setup_logger(cfg: DictConfig) -> Logger:
@@ -66,10 +67,12 @@ def setup_logger(cfg: DictConfig) -> Logger:
 
 
 def _make_raw_env(cfg: DictConfig) -> Environment:
+    '''
     env = jumanji.make(cfg.env.registered_version)
     if cfg.env.name in {"lbf", "connector", "search_and_rescue"}:
         # Convert a multi-agent environment to a single-agent environment
-        env = MultiToSingleWrapper(env)
+        env = MultiToSingleWrapper(env)'''
+    env = PacMan
     return env
 
 
@@ -104,6 +107,7 @@ def setup_agent(cfg: DictConfig, env: Environment) -> Agent:
             l_pg=cfg.env.a2c.l_pg,
             l_td=cfg.env.a2c.l_td,
             l_en=cfg.env.a2c.l_en,
+            sequence_length=cfg.env.network.get("sequence_length", 10)  # 新增参数
         )
     else:
         raise ValueError(f"Expected agent name to be in ['random', 'a2c'], got {cfg.agent}.")
@@ -128,12 +132,12 @@ def _setup_actor_critic_neworks(cfg: DictConfig, env: Environment) -> ActorCriti
             num_channels=cfg.env.network.num_channels,
             policy_layers=cfg.env.network.policy_layers,
             value_layers=cfg.env.network.value_layers,
-            # lstm_hidden_size=128,
+            lstm_hidden_size=cfg.env.network.lstm_hidden_size,  # 从配置获取
+            sequence_length=cfg.env.network.get("sequence_length", 10)  # 新增参数
         )
     else:
         raise ValueError(f"Environment name not found. Got {cfg.env.name}.")
     return actor_critic_networks
-
 
 def setup_evaluators(cfg: DictConfig, agent: Agent) -> Tuple[Evaluator, Evaluator]:
     env = _make_raw_env(cfg)
@@ -151,48 +155,73 @@ def setup_evaluators(cfg: DictConfig, agent: Agent) -> Tuple[Evaluator, Evaluato
     )
     return stochastic_eval, greedy_eval
 
+
 def setup_training_state(env: Environment, agent: Agent, key: chex.PRNGKey) -> TrainingState:
     params_key, reset_key, acting_key = jax.random.split(key, 3)
 
-    # Initialize params.
+    # 初始化网络参数
     params_state = agent.init_params(params_key)
 
-    # Initialize environment states.
+    # 设备并行设置
     num_local_devices = jax.local_device_count()
     num_global_devices = jax.device_count()
     num_workers = num_global_devices // num_local_devices
     local_batch_size = agent.total_batch_size // num_global_devices
+
+    # 初始化环境状态
     reset_keys = jax.random.split(reset_key, agent.total_batch_size).reshape(
-        (
-            num_workers,
-            num_local_devices,
-            local_batch_size,
-            -1,
-        )
+        (num_workers, num_local_devices, local_batch_size, -1)
     )
     reset_keys_per_worker = reset_keys[jax.process_index()]
     env_state, timestep = jax.pmap(env.reset, axis_name="devices")(reset_keys_per_worker)
 
-    # Initialize acting states.
+    # 初始化acting状态
     acting_key_per_device = jax.random.split(acting_key, num_global_devices).reshape(
         num_workers, num_local_devices, -1
     )
     acting_key_per_worker_device = acting_key_per_device[jax.process_index()]
-    acting_state = ActingState(
-        state=env_state,
-        timestep=timestep,
-        key=acting_key_per_worker_device,
-        episode_count=jnp.zeros(num_local_devices, float),
-        env_step_count=jnp.zeros(num_local_devices, float),
+
+    # 修改：使用transform初始化LSTM状态
+    def init_lstm_state(hidden_size, batch_size):
+        lstm = hk.LSTM(hidden_size)
+        return lstm.initial_state(batch_size)
+
+    # 将初始化函数转换为纯函数
+    init_lstm_state_fn = hk.transform(init_lstm_state).apply
+    init_lstm_params = hk.transform(init_lstm_state).init(
+        params_key, agent.lstm_hidden_size, 64  # batch_size=1
     )
 
-    # Build the training state.
-    training_state = TrainingState(
+    # 初始化LSTM状态
+    if hasattr(agent, 'lstm_hidden_size'):
+        haiku_state = init_lstm_state_fn(
+            init_lstm_params, None, agent.lstm_hidden_size, 64  # batch_size=1
+        )
+        lstm_state = LSTMState.from_haiku(haiku_state)
+
+        # 扩展到设备维度
+        lstm_state = jax.tree_map(
+            lambda x: jnp.broadcast_to(x, (num_local_devices, *x.shape)),
+            lstm_state
+        )
+    else:
+        lstm_state = None
+    if isinstance(lstm_state, LSTMState):
+        lstm_state = lstm_state.to_haiku()
+    else:
+        lstm_state = lstm_state
+
+    return TrainingState(
         params_state=jax.device_put_replicated(params_state, jax.local_devices()),
-        acting_state=acting_state,
+        acting_state=ActingState(
+            state=env_state,
+            timestep=timestep,
+            key=acting_key_per_worker_device,
+            episode_count=jnp.zeros(num_local_devices, float),
+            env_step_count=jnp.zeros(num_local_devices, float)
+        ),
+        lstm_state=lstm_state
     )
-    return training_state
-
 '''from typing import Tuple
 import chex
 import jax

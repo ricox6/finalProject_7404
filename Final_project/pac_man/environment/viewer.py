@@ -26,8 +26,8 @@ from matplotlib.axes import Axes
 from numpy.typing import NDArray
 
 #import jumanji.environments
-from maze_rendering import MazeViewer
-from types import Observation, State
+from .maze_rendering import MazeViewer
+from .types import Observation, State
 
 # # ￥￥￥￥￥这里是渲染可视化部分，这部分需要的是masked之后的，也就是鬼时隐时现的情况，建议在location那个地方即时访问visible属性然后mask现在这个代码的location，然后用mask_location进行后续内容
 class PacManViewer(MazeViewer):

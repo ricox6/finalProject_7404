@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+'''
 from typing import Any, Callable, NamedTuple
 
 import chex
@@ -22,4 +23,25 @@ class FeedForwardNetwork(NamedTuple):
     """Networks are meant to take a batch of observations: shape (B, ...)."""
 
     init: Callable[[chex.PRNGKey, Any], hk.Params]
-    apply: Callable[[hk.Params, Any], chex.Array]
+    apply: Callable[[hk.Params, Any], chex.Array]'''
+
+from typing import Any, Callable, NamedTuple, Optional, Tuple
+import chex
+import haiku as hk
+
+
+class FeedForwardNetwork(NamedTuple):
+    """Networks with support for recurrent state (e.g. LSTM).
+
+    Modified to handle both stateless and stateful networks:
+    - For stateless networks: state can be ignored
+    - For stateful networks: init returns (params, state) and apply handles state
+    """
+    init: Callable[
+        [chex.PRNGKey, Any],
+        Tuple[hk.Params, Any]  # Returns (params, initial_state)
+    ]
+    apply: Callable[
+        [hk.Params, Any, Optional[Any]],  # Takes (params, inputs, state)
+        Tuple[chex.Array, Any]  # Returns (outputs, new_state)
+    ]

@@ -20,7 +20,7 @@ from typing import Generic, Optional, Sequence
 import matplotlib
 from numpy.typing import NDArray
 
-from environment_basic import State
+from .environment_basic import State
 
 
 class Viewer(abc.ABC, Generic[State]):
