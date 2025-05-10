@@ -235,6 +235,7 @@ class Evaluator:
             self.num_workers, self.num_local_devices, -1
         )
         eval_keys_per_worker = eval_keys[jax.process_index()]
+
         return self.generate_evaluations(
             params_state,
             eval_keys_per_worker,

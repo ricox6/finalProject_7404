@@ -50,3 +50,7 @@ class Agent(abc.ABC):
     ) -> Callable[[Any, chex.PRNGKey, Optional[LSTMState]],
     Tuple[chex.Array, Any, Optional[LSTMState]]]:
         pass
+
+    def act(self, policy_params: hk.Params, timestep: Any, lstm_state: Optional[LSTMState] = None, key: Optional[chex.PRNGKey] = None
+    ) -> Tuple[chex.Array, LSTMState]:
+        pass

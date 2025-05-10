@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Tuple
-
+from typing import Tuple, Optional, List, Dict, Any
 import chex
 import jax
 import jax.numpy as jnp
@@ -23,9 +22,7 @@ import haiku as hk
 
 import jumanji
 from Final_project.pac_man.env_basic.environment_basic import Environment
-
 from Final_project.pac_man.environment.env import PacMan
-
 from jumanji.training import networks
 from Final_project.pac_man.agents.a2c_agent import A2CAgent
 from Final_project.pac_man.agents.base_agent import Agent
@@ -43,9 +40,15 @@ from Final_project.pac_man.networks.protocols import RandomPolicy
 from Final_project.pac_man.train.types import ActingState, TrainingState, LSTMState
 from wrappers import MultiToSingleWrapper, VmapAutoResetWrapper
 
+# 新增导入
+from Final_project.pac_man.environment.viewer import PacManViewer
+from Final_project.pac_man.environment.types import State
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+
+
 def setup_logger(cfg: DictConfig) -> Logger:
     logger: Logger
-    # Log only once if there are multiple hosts on the pod.
     if jax.process_index() != 0:
         return NoOpLogger()
     if cfg.logger.type == "tensorboard":
@@ -67,12 +70,7 @@ def setup_logger(cfg: DictConfig) -> Logger:
 
 
 def _make_raw_env(cfg: DictConfig) -> Environment:
-    '''
-    env = jumanji.make(cfg.env.registered_version)
-    if cfg.env.name in {"lbf", "connector", "search_and_rescue"}:
-        # Convert a multi-agent environment to a single-agent environment
-        env = MultiToSingleWrapper(env)'''
-    env = PacMan
+    env = PacMan()
     return env
 
 
@@ -107,21 +105,22 @@ def setup_agent(cfg: DictConfig, env: Environment) -> Agent:
             l_pg=cfg.env.a2c.l_pg,
             l_td=cfg.env.a2c.l_td,
             l_en=cfg.env.a2c.l_en,
-            sequence_length=cfg.env.network.get("sequence_length", 10)  # 新增参数
+            sequence_length=cfg.env.network.get("sequence_length", 10)
         )
     else:
         raise ValueError(f"Expected agent name to be in ['random', 'a2c'], got {cfg.agent}.")
     return agent
+
 
 def _setup_random_policy(cfg: DictConfig, env: Environment) -> RandomPolicy:
     assert cfg.agent == "random"
     if cfg.env.name == "pac_man":
         assert isinstance(env.unwrapped, PacMan)
         random_policy = networks.make_random_policy_pacman()
-
     else:
         raise ValueError(f"Environment name not found. Got {cfg.env.name}.")
     return random_policy
+
 
 def _setup_actor_critic_neworks(cfg: DictConfig, env: Environment) -> ActorCriticNetworks:
     assert cfg.agent == "a2c"
@@ -132,12 +131,13 @@ def _setup_actor_critic_neworks(cfg: DictConfig, env: Environment) -> ActorCriti
             num_channels=cfg.env.network.num_channels,
             policy_layers=cfg.env.network.policy_layers,
             value_layers=cfg.env.network.value_layers,
-            lstm_hidden_size=cfg.env.network.lstm_hidden_size,  # 从配置获取
-            sequence_length=cfg.env.network.get("sequence_length", 10)  # 新增参数
+            lstm_hidden_size=cfg.env.network.lstm_hidden_size,
+            sequence_length=cfg.env.network.get("sequence_length", 10)
         )
     else:
         raise ValueError(f"Environment name not found. Got {cfg.env.name}.")
     return actor_critic_networks
+
 
 def setup_evaluators(cfg: DictConfig, agent: Agent) -> Tuple[Evaluator, Evaluator]:
     env = _make_raw_env(cfg)
@@ -158,48 +158,37 @@ def setup_evaluators(cfg: DictConfig, agent: Agent) -> Tuple[Evaluator, Evaluato
 
 def setup_training_state(env: Environment, agent: Agent, key: chex.PRNGKey) -> TrainingState:
     params_key, reset_key, acting_key = jax.random.split(key, 3)
-
-    # 初始化网络参数
     params_state = agent.init_params(params_key)
-
-    # 设备并行设置
     num_local_devices = jax.local_device_count()
     num_global_devices = jax.device_count()
     num_workers = num_global_devices // num_local_devices
     local_batch_size = agent.total_batch_size // num_global_devices
 
-    # 初始化环境状态
     reset_keys = jax.random.split(reset_key, agent.total_batch_size).reshape(
         (num_workers, num_local_devices, local_batch_size, -1)
     )
     reset_keys_per_worker = reset_keys[jax.process_index()]
     env_state, timestep = jax.pmap(env.reset, axis_name="devices")(reset_keys_per_worker)
 
-    # 初始化acting状态
     acting_key_per_device = jax.random.split(acting_key, num_global_devices).reshape(
         num_workers, num_local_devices, -1
     )
     acting_key_per_worker_device = acting_key_per_device[jax.process_index()]
 
-    # 修改：使用transform初始化LSTM状态
     def init_lstm_state(hidden_size, batch_size):
         lstm = hk.LSTM(hidden_size)
         return lstm.initial_state(batch_size)
 
-    # 将初始化函数转换为纯函数
     init_lstm_state_fn = hk.transform(init_lstm_state).apply
     init_lstm_params = hk.transform(init_lstm_state).init(
-        params_key, agent.lstm_hidden_size, 64  # batch_size=1
+        params_key, agent.lstm_hidden_size, 1
     )
 
-    # 初始化LSTM状态
     if hasattr(agent, 'lstm_hidden_size'):
         haiku_state = init_lstm_state_fn(
-            init_lstm_params, None, agent.lstm_hidden_size, 64  # batch_size=1
+            init_lstm_params, None, agent.lstm_hidden_size, 1
         )
         lstm_state = LSTMState.from_haiku(haiku_state)
-
-        # 扩展到设备维度
         lstm_state = jax.tree_map(
             lambda x: jnp.broadcast_to(x, (num_local_devices, *x.shape)),
             lstm_state
@@ -222,487 +211,90 @@ def setup_training_state(env: Environment, agent: Agent, key: chex.PRNGKey) -> T
         ),
         lstm_state=lstm_state
     )
-'''from typing import Tuple
-import chex
-import jax
-import jax.numpy as jnp
-import optax
-from omegaconf import DictConfig
-
-import jumanji
-from Final_project.pac_man.env_basic.environment_basic import Environment
-
-from jumanji.environments import (
-    CVRP,
-    MMST,
-    TSP,
-    BinPack,
-    Cleaner,
-    Connector,
-    FlatPack,
-    Game2048,
-    GraphColoring,
-    JobShop,
-    Knapsack,
-    LevelBasedForaging,
-    Maze,
-    Minesweeper,
-    MultiCVRP,
-    PacMan,
-    RobotWarehouse,
-    RubiksCube,
-    SearchAndRescue,
-    SlidingTilePuzzle,
-    Snake,
-    Sokoban,
-    Sudoku,
-    Tetris,
-)
-from jumanji.training import networks
-from Final_project.pac_man.agents.a2c_agent import A2CAgent
-from Final_project.pac_man.agents.base_agent import Agent
-from Final_project.pac_man.agents.random_agent import RandomAgent
-from evaluator import Evaluator
-from loggers import (
-    Logger,
-    NeptuneLogger,
-    NoOpLogger,
-    TensorboardLogger,
-    TerminalLogger,
-)
-from Final_project.pac_man.networks.actor_critic import ActorCriticNetworks
-from Final_project.pac_man.networks.protocols import RandomPolicy
-from types import ActingState, TrainingState
-from wrappers import MultiToSingleWrapper, VmapAutoResetWrapper
 
 
-def setup_logger(cfg: DictConfig) -> Logger:
-    logger: Logger
-    # Log only once if there are multiple hosts on the pod.
-    if jax.process_index() != 0:
-        return NoOpLogger()
-    if cfg.logger.type == "tensorboard":
-        logger = TensorboardLogger(name=cfg.logger.name, save_checkpoint=cfg.logger.save_checkpoint)
-    elif cfg.logger.type == "neptune":
-        logger = NeptuneLogger(
-            name=cfg.logger.name,
-            project="InstaDeep/jumanji",
-            cfg=cfg,
-            save_checkpoint=cfg.logger.save_checkpoint,
+# 新增函数：可视化训练结果
+def visualize_training(states: List[State], save_path: Optional[str] = None) -> None:
+    """Visualize the training process using the PacManViewer.
+
+    Args:
+        states: List of states collected during training.
+        save_path: Optional path to save the animation as a GIF.
+    """
+    # 创建查看器
+    viewer = PacManViewer(name="PacMan Training", render_mode="human")
+
+    # 渲染每一帧
+    frames = []
+    for state in states:
+        frame = viewer.render(state)
+        frames.append(frame)
+
+    # 创建动画
+    if save_path:
+        fig, ax = plt.subplots()
+
+        def update(frame):
+            ax.clear()
+            ax.imshow(frame)
+            return ax,
+
+        anim = FuncAnimation(
+            fig,
+            update,
+            frames=frames,
+            interval=200,
+            blit=True
         )
-    elif cfg.logger.type == "terminal":
-        logger = TerminalLogger(name=cfg.logger.name, save_checkpoint=cfg.logger.save_checkpoint)
-    else:
-        raise ValueError(
-            f"logger expected in ['neptune', 'tensorboard', 'terminal'], got {cfg.logger}."
-        )
-    return logger
+        anim.save(save_path, writer="pillow", fps=5)
+        plt.close(fig)
+
+    # 交互式显示
+    plt.show()
 
 
-def _make_raw_env(cfg: DictConfig) -> Environment:
-    env = jumanji.make(cfg.env.registered_version)
-    if cfg.env.name in {"lbf", "connector", "search_and_rescue"}:
-        # Convert a multi-agent environment to a single-agent environment
-        env = MultiToSingleWrapper(env)
-    return env
+# 新增函数：收集训练过程中的状态
+def collect_training_states(
+        agent: Agent,
+        env: Environment,
+        num_episodes: int = 1,
+        max_steps: int = 1000
+) -> List[State]:
+    """Collect states during training for visualization.
+
+    Args:
+        agent: The trained agent.
+        env: The environment.
+        num_episodes: Number of episodes to collect.
+        max_steps: Maximum steps per episode.
+
+    Returns:
+        List of states collected during the episodes.
+    """
+    collected_states = []
+    key = jax.random.PRNGKey(0)
+
+    for _ in range(num_episodes):
+        state, _ = env.reset(key)
+        collected_states.append(state)
+
+        for _ in range(max_steps):
+            action = agent.act(state)
+            state, _ = env.step(state, action)
+            collected_states.append(state)
+
+            if state.last():
+                break
+
+    return collected_states
 
 
-def setup_env(cfg: DictConfig) -> Environment:
-    env = _make_raw_env(cfg)
-    env = VmapAutoResetWrapper(env)
-    return env
+def remove_batch_dim(params):
+    """移除所有参数的第一个维度（批量维度）"""
 
+    def _squeeze_first_dim(x):
+        if x.ndim > 1:  # 仅处理多维数组
+            return x.squeeze(axis=0)  # 移除第0维
+        return x  # 标量或一维数组保持不变
 
-def setup_agent(cfg: DictConfig, env: Environment) -> Agent:
-    agent: Agent
-    if cfg.agent == "random":
-        random_policy = _setup_random_policy(cfg, env)
-        agent = RandomAgent(
-            env=env,
-            n_steps=cfg.env.training.n_steps,
-            total_batch_size=cfg.env.training.total_batch_size,
-            random_policy=random_policy,
-        )
-    elif cfg.agent == "a2c":
-        actor_critic_networks = _setup_actor_critic_neworks(cfg, env)
-        optimizer = optax.adam(cfg.env.a2c.learning_rate)
-        agent = A2CAgent(
-            env=env,
-            n_steps=cfg.env.training.n_steps,
-            total_batch_size=cfg.env.training.total_batch_size,
-            actor_critic_networks=actor_critic_networks,
-            optimizer=optimizer,
-            normalize_advantage=cfg.env.a2c.normalize_advantage,
-            discount_factor=cfg.env.a2c.discount_factor,
-            bootstrapping_factor=cfg.env.a2c.bootstrapping_factor,
-            l_pg=cfg.env.a2c.l_pg,
-            l_td=cfg.env.a2c.l_td,
-            l_en=cfg.env.a2c.l_en,
-        )
-    else:
-        raise ValueError(f"Expected agent name to be in ['random', 'a2c'], got {cfg.agent}.")
-    return agent
-
-
-def _setup_random_policy(cfg: DictConfig, env: Environment) -> RandomPolicy:
-    assert cfg.agent == "random"
-    if cfg.env.name == "bin_pack":
-        assert isinstance(env.unwrapped, BinPack)
-        random_policy = networks.make_random_policy_bin_pack(bin_pack=env.unwrapped)
-    elif cfg.env.name == "snake":
-        assert isinstance(env.unwrapped, Snake)
-        random_policy = networks.make_random_policy_snake()
-    elif cfg.env.name == "sliding_tile_puzzle":
-        assert isinstance(env.unwrapped, SlidingTilePuzzle)
-        random_policy = networks.make_random_policy_sliding_tile_puzzle()
-    elif cfg.env.name == "tsp":
-        assert isinstance(env.unwrapped, TSP)
-        random_policy = networks.make_random_policy_tsp()
-    elif cfg.env.name == "knapsack":
-        assert isinstance(env.unwrapped, Knapsack)
-        random_policy = networks.make_random_policy_knapsack()
-    elif cfg.env.name == "job_shop":
-        assert isinstance(env.unwrapped, JobShop)
-        random_policy = networks.make_random_policy_job_shop()
-    elif cfg.env.name == "cvrp":
-        assert isinstance(env.unwrapped, CVRP)
-        random_policy = networks.make_random_policy_cvrp()
-    elif cfg.env.name == "multi_cvrp":
-        assert isinstance(env.unwrapped, MultiCVRP)
-        random_policy = networks.make_random_policy_multicvrp()
-    elif cfg.env.name == "rubiks_cube":
-        assert isinstance(env.unwrapped, RubiksCube)
-        random_policy = networks.make_random_policy_rubiks_cube(rubiks_cube=env.unwrapped)
-    elif cfg.env.name == "minesweeper":
-        assert isinstance(env.unwrapped, Minesweeper)
-        random_policy = networks.make_random_policy_minesweeper(minesweeper=env.unwrapped)
-    elif cfg.env.name == "game_2048":
-        assert isinstance(env.unwrapped, Game2048)
-        random_policy = networks.make_random_policy_game_2048()
-    elif cfg.env.name == "sudoku":
-        assert isinstance(env.unwrapped, Sudoku)
-        random_policy = networks.make_random_policy_sudoku(sudoku=env.unwrapped)
-    elif cfg.env.name == "cleaner":
-        assert isinstance(env.unwrapped, Cleaner)
-        random_policy = networks.make_random_policy_cleaner()
-    elif cfg.env.name == "maze":
-        assert isinstance(env.unwrapped, Maze)
-        random_policy = networks.make_random_policy_maze()
-    elif cfg.env.name == "sokoban":
-        assert isinstance(env.unwrapped, Sokoban)
-        random_policy = networks.make_random_policy_sokoban()
-    elif cfg.env.name == "connector":
-        assert isinstance(env.unwrapped, Connector)
-        random_policy = networks.make_random_policy_connector()
-    elif cfg.env.name == "tetris":
-        assert isinstance(env.unwrapped, Tetris)
-        random_policy = networks.make_random_policy_tetris(tetris=env.unwrapped)
-    elif cfg.env.name == "mmst":
-        assert isinstance(env.unwrapped, MMST)
-        random_policy = networks.make_random_policy_mmst()
-    elif cfg.env.name == "robot_warehouse":
-        assert isinstance(env.unwrapped, RobotWarehouse)
-        random_policy = networks.make_random_policy_robot_warehouse()
-    elif cfg.env.name == "graph_coloring":
-        assert isinstance(env.unwrapped, GraphColoring)
-        random_policy = networks.make_random_policy_graph_coloring()
-    elif cfg.env.name == "flat_pack":
-        assert isinstance(env.unwrapped, FlatPack)
-        random_policy = networks.make_random_policy_flat_pack(
-            flat_pack=env.unwrapped,
-        )
-    elif cfg.env.name == "pac_man":
-        assert isinstance(env.unwrapped, PacMan)
-        random_policy = networks.make_random_policy_pacman()
-    elif cfg.env.name == "lbf":
-        assert isinstance(env.unwrapped, LevelBasedForaging)
-        random_policy = networks.make_random_policy_lbf()
-    elif cfg.env.name == "search_and_rescue":
-        assert isinstance(env.unwrapped, SearchAndRescue)
-        random_policy = networks.make_random_policy_search_and_rescue(
-            search_and_rescue=env.unwrapped
-        )
-    else:
-        raise ValueError(f"Environment name not found. Got {cfg.env.name}.")
-    return random_policy
-
-
-def _setup_actor_critic_neworks(cfg: DictConfig, env: Environment) -> ActorCriticNetworks:
-    assert cfg.agent == "a2c"
-    if cfg.env.name == "bin_pack":
-        assert isinstance(env.unwrapped, BinPack)
-        actor_critic_networks = networks.make_actor_critic_networks_bin_pack(
-            bin_pack=env.unwrapped,
-            num_transformer_layers=cfg.env.network.num_transformer_layers,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-        )
-    elif cfg.env.name == "snake":
-        assert isinstance(env.unwrapped, Snake)
-        actor_critic_networks = networks.make_actor_critic_networks_snake(
-            snake=env.unwrapped,
-            num_channels=cfg.env.network.num_channels,
-            policy_layers=cfg.env.network.policy_layers,
-            value_layers=cfg.env.network.value_layers,
-        )
-    elif cfg.env.name == "tsp":
-        assert isinstance(env.unwrapped, TSP)
-        actor_critic_networks = networks.make_actor_critic_networks_tsp(
-            tsp=env.unwrapped,
-            transformer_num_blocks=cfg.env.network.transformer_num_blocks,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-            mean_cities_in_query=cfg.env.network.mean_cities_in_query,
-        )
-    elif cfg.env.name == "knapsack":
-        assert isinstance(env.unwrapped, Knapsack)
-        actor_critic_networks = networks.make_actor_critic_networks_knapsack(
-            knapsack=env.unwrapped,
-            transformer_num_blocks=cfg.env.network.transformer_num_blocks,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-        )
-    elif cfg.env.name == "flat_pack":
-        assert isinstance(env.unwrapped, FlatPack)
-        actor_critic_networks = networks.make_actor_critic_networks_flat_pack(
-            flat_pack=env.unwrapped,
-            num_transformer_layers=cfg.env.network.num_transformer_layers,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-            hidden_size=cfg.env.network.hidden_size,
-        )
-    elif cfg.env.name == "job_shop":
-        assert isinstance(env.unwrapped, JobShop)
-        actor_critic_networks = networks.make_actor_critic_networks_job_shop(
-            job_shop=env.unwrapped,
-            num_layers_machines=cfg.env.network.num_layers_machines,
-            num_layers_operations=cfg.env.network.num_layers_operations,
-            num_layers_joint_machines_jobs=cfg.env.network.num_layers_joint_machines_jobs,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-        )
-    elif cfg.env.name == "cvrp":
-        assert isinstance(env.unwrapped, CVRP)
-        actor_critic_networks = networks.make_actor_critic_networks_cvrp(
-            cvrp=env.unwrapped,
-            transformer_num_blocks=cfg.env.network.transformer_num_blocks,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-            mean_nodes_in_query=cfg.env.network.mean_nodes_in_query,
-        )
-    elif cfg.env.name == "multi_cvrp":
-        assert isinstance(env.unwrapped, MultiCVRP)
-        actor_critic_networks = networks.make_actor_critic_networks_multicvrp(
-            MultiCVRP=env.unwrapped,
-            num_vehicles=cfg.env.network.num_vehicles,
-            num_customers=cfg.env.network.num_customers,
-            num_layers_vehicles=cfg.env.network.num_layers_vehicles,
-            num_layers_customers=cfg.env.network.num_layers_customers,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-        )
-    elif cfg.env.name == "game_2048":
-        assert isinstance(env.unwrapped, Game2048)
-        actor_critic_networks = networks.make_actor_critic_networks_game_2048(
-            game_2048=env.unwrapped,
-            num_channels=cfg.env.network.num_channels,
-            policy_layers=cfg.env.network.policy_layers,
-            value_layers=cfg.env.network.value_layers,
-        )
-    elif cfg.env.name == "sliding_tile_puzzle":
-        assert isinstance(env.unwrapped, SlidingTilePuzzle)
-        actor_critic_networks = networks.make_actor_critic_networks_sliding_tile_puzzle(
-            sliding_tile_puzzle=env.unwrapped,
-            num_channels=cfg.env.network.num_channels,
-            policy_layers=cfg.env.network.policy_layers,
-            value_layers=cfg.env.network.value_layers,
-        )
-    elif cfg.env.name == "rubiks_cube":
-        assert isinstance(env.unwrapped, RubiksCube)
-        actor_critic_networks = networks.make_actor_critic_networks_rubiks_cube(
-            rubiks_cube=env.unwrapped,
-            cube_embed_dim=cfg.env.network.cube_embed_dim,
-            step_count_embed_dim=cfg.env.network.step_count_embed_dim,
-            dense_layer_dims=cfg.env.network.dense_layer_dims,
-        )
-    elif cfg.env.name == "sudoku":
-        assert isinstance(env.unwrapped, Sudoku)
-        actor_critic_networks = networks.make_equivariant_actor_critic_networks_sudoku(
-            sudoku=env.unwrapped,
-            num_heads=cfg.env.network.num_heads,
-            key_size=cfg.env.network.key_size,
-            policy_layers=cfg.env.network.policy_layers,
-            value_layers=cfg.env.network.value_layers,
-        )
-    elif cfg.env.name == "robot_warehouse":
-        assert isinstance(env.unwrapped, RobotWarehouse)
-        actor_critic_networks = networks.make_actor_critic_networks_robot_warehouse(
-            robot_warehouse=env.unwrapped,
-            transformer_num_blocks=cfg.env.network.transformer_num_blocks,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-        )
-    elif cfg.env.name == "minesweeper":
-        assert isinstance(env.unwrapped, Minesweeper)
-        actor_critic_networks = networks.make_actor_critic_networks_minesweeper(
-            minesweeper=env.unwrapped,
-            board_embed_dim=cfg.env.network.board_embed_dim,
-            board_conv_channels=cfg.env.network.board_conv_channels,
-            board_kernel_shape=cfg.env.network.board_kernel_shape,
-            num_mines_embed_dim=cfg.env.network.num_mines_embed_dim,
-            final_layer_dims=cfg.env.network.final_layer_dims,
-        )
-    elif cfg.env.name == "maze":
-        assert isinstance(env.unwrapped, Maze)
-        actor_critic_networks = networks.make_actor_critic_networks_maze(
-            maze=env.unwrapped,
-            num_channels=cfg.env.network.num_channels,
-            policy_layers=cfg.env.network.policy_layers,
-            value_layers=cfg.env.network.value_layers,
-        )
-    elif cfg.env.name == "sokoban":
-        assert isinstance(env.unwrapped, Sokoban)
-        actor_critic_networks = networks.make_actor_critic_networks_sokoban(
-            sokoban=env.unwrapped,
-            channels=cfg.env.network.channels,
-            policy_layers=cfg.env.network.policy_layers,
-            value_layers=cfg.env.network.value_layers,
-        )
-    elif cfg.env.name == "cleaner":
-        assert isinstance(env.unwrapped, Cleaner)
-        actor_critic_networks = networks.make_actor_critic_networks_cleaner(
-            cleaner=env.unwrapped,
-            num_conv_channels=cfg.env.network.num_conv_channels,
-            policy_layers=cfg.env.network.policy_layers,
-            value_layers=cfg.env.network.value_layers,
-        )
-    elif cfg.env.name == "connector":
-        assert isinstance(env.unwrapped, Connector)
-        actor_critic_networks = networks.make_actor_critic_networks_connector(
-            connector=env.unwrapped,
-            transformer_num_blocks=cfg.env.network.transformer_num_blocks,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-            conv_n_channels=cfg.env.network.conv_n_channels,
-        )
-    elif cfg.env.name == "tetris":
-        assert isinstance(env.unwrapped, Tetris)
-        actor_critic_networks = networks.make_actor_critic_networks_tetris(
-            tetris=env.unwrapped,
-            conv_num_channels=cfg.env.network.conv_num_channels,
-            tetromino_layers=cfg.env.network.tetromino_layers,
-            head_layers=cfg.env.network.head_layers,
-        )
-    elif cfg.env.name == "mmst":
-        assert isinstance(env.unwrapped, MMST)
-        actor_critic_networks = networks.make_actor_critic_networks_mmst(
-            mmst=env.unwrapped,
-            num_transformer_layers=cfg.env.network.num_transformer_layers,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-        )
-    elif cfg.env.name == "graph_coloring":
-        assert isinstance(env.unwrapped, GraphColoring)
-        actor_critic_networks = networks.make_actor_critic_networks_graph_coloring(
-            graph_coloring=env.unwrapped,
-            num_transformer_layers=cfg.env.network.num_transformer_layers,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-        )
-    elif cfg.env.name == "pac_man":
-        assert isinstance(env.unwrapped, PacMan)
-        actor_critic_networks = networks.make_actor_critic_networks_pacman(
-            pac_man=env.unwrapped,
-            num_channels=cfg.env.network.num_channels,
-            policy_layers=cfg.env.network.policy_layers,
-            value_layers=cfg.env.network.value_layers,
-        )
-    elif cfg.env.name == "lbf":
-        assert isinstance(env.unwrapped, LevelBasedForaging)
-        actor_critic_networks = networks.make_actor_critic_networks_lbf(
-            lbf_env=env.unwrapped,
-            transformer_num_blocks=cfg.env.network.transformer_num_blocks,
-            transformer_num_heads=cfg.env.network.transformer_num_heads,
-            transformer_key_size=cfg.env.network.transformer_key_size,
-            transformer_mlp_units=cfg.env.network.transformer_mlp_units,
-        )
-    elif cfg.env.name == "search_and_rescue":
-        assert isinstance(env.unwrapped, SearchAndRescue)
-        actor_critic_networks = networks.make_actor_critic_search_and_rescue(
-            search_and_rescue=env.unwrapped,
-            layers=cfg.env.network.layers,
-        )
-    else:
-        raise ValueError(f"Environment name not found. Got {cfg.env.name}.")
-    return actor_critic_networks
-
-
-def setup_evaluators(cfg: DictConfig, agent: Agent) -> Tuple[Evaluator, Evaluator]:
-    env = _make_raw_env(cfg)
-    stochastic_eval = Evaluator(
-        eval_env=env,
-        agent=agent,
-        total_batch_size=cfg.env.evaluation.eval_total_batch_size,
-        stochastic=True,
-    )
-    greedy_eval = Evaluator(
-        eval_env=env,
-        agent=agent,
-        total_batch_size=cfg.env.evaluation.greedy_eval_total_batch_size,
-        stochastic=False,
-    )
-    return stochastic_eval, greedy_eval
-
-
-def setup_training_state(env: Environment, agent: Agent, key: chex.PRNGKey) -> TrainingState:
-    params_key, reset_key, acting_key = jax.random.split(key, 3)
-
-    # Initialize params.
-    params_state = agent.init_params(params_key)
-
-    # Initialize environment states.
-    num_local_devices = jax.local_device_count()
-    num_global_devices = jax.device_count()
-    num_workers = num_global_devices // num_local_devices
-    local_batch_size = agent.total_batch_size // num_global_devices
-    reset_keys = jax.random.split(reset_key, agent.total_batch_size).reshape(
-        (
-            num_workers,
-            num_local_devices,
-            local_batch_size,
-            -1,
-        )
-    )
-    reset_keys_per_worker = reset_keys[jax.process_index()]
-    env_state, timestep = jax.pmap(env.reset, axis_name="devices")(reset_keys_per_worker)
-
-    # Initialize acting states.
-    acting_key_per_device = jax.random.split(acting_key, num_global_devices).reshape(
-        num_workers, num_local_devices, -1
-    )
-    acting_key_per_worker_device = acting_key_per_device[jax.process_index()]
-    acting_state = ActingState(
-        state=env_state,
-        timestep=timestep,
-        key=acting_key_per_worker_device,
-        episode_count=jnp.zeros(num_local_devices, float),
-        env_step_count=jnp.zeros(num_local_devices, float),
-    )
-
-    # Build the training state.
-    training_state = TrainingState(
-        params_state=jax.device_put_replicated(params_state, jax.local_devices()),
-        acting_state=acting_state,
-    )
-    return training_state'''
+    return jax.tree_map(_squeeze_first_dim, params)

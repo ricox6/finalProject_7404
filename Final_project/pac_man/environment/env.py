@@ -37,192 +37,79 @@ from Final_project.pac_man.env_basic.viewer_basic import Viewer
 
 
 class PacMan(Environment[State, specs.DiscreteArray, Observation]):
-    """A JAX implementation of the 'PacMan' game where a single agent must navigate a
-    maze to collect pellets and avoid 4 heuristic agents. The game takes place on a 31x28
-    grid where the player can move in 4 directions (left, right, up, down) and collect
-    pellets to gain points. The goal is to collect all of the pellets on the board without
-    colliding with one of the heuristic agents. Using the AsciiGenerator the environment
-    will always generate the same maze as long as the same Ascii diagram is in use.
-
-    - observation: `Observation`
-        - player_locations: current 2D position of agent.
-        - grid: jax array (int) of the ingame maze with walls.
-        - ghost_locations: jax array (int) of ghost positions.
-        - power_up_locations: jax array (int) of power-pellet locations
-        - pellet_locations: jax array (int) of pellets.
-        - action_mask: jax array (bool) defining current actions.
-        - score: (int32) of total points aquired.
-
-    - action: jax array (int) of shape () specifiying which action to take [0,1,2,3,4]
-        corresponding to [up, right, down, left, no-op. If there is an invalid action
-        taken, i.e. there is a wall blocking the action, then no action (no-op) is taken.
-
-    - reward: jax array (float32) of shape (): 10 per pellet collected, 20 for a power pellet
-        and 200 for each unique ghost eaten.
-
-    - episode termination (if any):
-        - agent has collected all pellets.
-        - agent killed by ghost.
-        - timer has elapsed.
-
-    - state: State:
-        - key: jax array (uint32) of shape(2,).
-        - grid: jax array (int)) of shape (31,28) of the ingame maze with walls.
-        - pellets: int tracking the number of pellets.
-        - frightened_state_time: jax array (int) of shape ()
-            tracks number of steps for the scatter state.
-        - pellet_locations: jax array (int) of pellets of shape (316,2).
-        - power_up_locations: jax array (int) of power-pellet locations of shape (4,2).
-        - player_locations: current 2D position of agent.
-        - ghost_locations: jax array (int) of ghost positions of shape (4,2).
-        - initial_player_locations: starting 2D position of agent.
-        - initial_ghost_positions: jax array (int) of ghost positions of shape (4,2).
-        - ghost_init_targets: jax array (int) of ghost positions.
-            used to direct ghosts on respawn.
-        - old_ghost_locations: jax array (int) of shape (4,2) of ghost positions from last step.
-            used to prevent ghost backtracking.
-        - ghost_init_steps: jax array (int) of shape (4,2) number of initial ghost steps.
-            used to determine per ghost initialisation.
-        - ghost_actions: jax array (int) of shape (4,).
-        - last_direction: int tracking the last direction of the player.
-        - dead: bool used to track player death.
-        - visited_index: jax array (int) of visited locations of shape (320,2).
-            used to prevent repeated pellet points.
-        - ghost_starts: jax array (int) of shape (4,2)
-            used to reset ghost positions if eaten
-        - scatter_targets: jax array (int) of shape (4,2)
-            target locations for ghosts when scatter behavior is active.
-        - step_count: (int32) of total steps taken from reset till current timestep.
-        - ghost_eaten: jax array (bool)of shape (4,) tracking if ghost has been eaten before.
-        - score: (int32) of total points aquired.
-
-
-
-    ```python
-    from jumanji.environments import pac_man
-    env = PacMan()
-    key = jax.random.PRNGKey(0)
-    state, timestep = jax.jit(env.reset)(key)
-    env.render(state)
-    action = env.action_spec.generate_value()
-    state, timestep = jax.jit(env.step)(state, action)
-    env.render(state)
-    ```
-    """
+    """PacMan游戏环境的JAX实现"""
 
     def __init__(
-        self,
-        generator: Optional[Generator] = None,
-        viewer: Optional[Viewer[State]] = None,
-        time_limit: Optional[int] = None,
+            self,
+            generator: Optional[Generator] = None,
+            viewer: Optional[Viewer[State]] = None,
+            time_limit: Optional[int] = None,
     ) -> None:
-        """Instantiates a `PacMan` environment.
-
-        Args:
-            generator: `Generator` whose `__call__` instantiates an environment instance.
-                Implemented options are [`AsciiGenerator`].
-            time_limit: the time_limit of an episode, i.e. the maximum number of environment steps
-                before the episode terminates. By default, set to 1000.
-            viewer: `Viewer` used for rendering. Defaults to `PacManViewer`.
-        """
-
         self.generator = generator or AsciiGenerator(DEFAULT_MAZE)
         self.x_size = self.generator.x_size
         self.y_size = self.generator.y_size
         self.pellet_spaces = self.generator.pellet_spaces
         super().__init__()
 
-# !!! 确保Viewer正确初始化
-        self._viewer = PacManViewer(name="PacMan", render_mode="rgb_array")
         self._viewer = viewer or PacManViewer("Pacman", render_mode="human")
-        self.time_limit = 1000 or time_limit
+        self.time_limit = time_limit or 1000
 
     @cached_property
     def observation_spec(self) -> specs.Spec[Observation]:
-        """Specifications of the observation of the `PacMan` environment.
-
-        Returns:
-            Spec containing all the specifications for all the `Observation` fields:
-            - player_locations: tree of BoundedArray (int32) of shape ().
-            - grid: BoundedArray (int)) of the ingame maze with walls.
-            - ghost_locations: jax array (int) of ghost positions.
-            - power_up_locations: jax array (int) of power-pellet locations
-            - pellet_locations: jax array (int) of pellet locations.
-            - action_mask: jax array (bool) defining current actions.
-            - frightened_state_time: int counting time remaining in
-                scatter mode.
-            - score: (int) of total score obtained by player.
-        """
+        """定义观察规范"""
         player_locations = specs.Spec(
             Position,
             "PositionSpec",
             y=specs.BoundedArray((), jnp.int32, 0, self.x_size - 1, "y_coordinate"),
             x=specs.BoundedArray((), jnp.int32, 0, self.y_size - 1, "x_coordinate"),
         )
-        grid = specs.BoundedArray(
-            shape=(self.x_size, self.y_size),
-            dtype=jnp.int32,
-            name="grid",
-            minimum=0,
-            maximum=1,
-        )
-        ghost_locations = specs.Array(
-            shape=(4, 2),
-            dtype=jnp.int32,
-            name="ghost_locations",
-        )
-        power_up_locations = specs.Array(
-            shape=(4, 2),
-            dtype=jnp.int32,
-            name="power_up_locations",
-        )
-        pellet_locations = specs.Array(
-            shape=(self.pellet_spaces.shape),
-            dtype=jnp.int32,
-            name="pellet_locations",
-        )
-        action_mask = specs.BoundedArray(
-            shape=(5,),
-            dtype=bool,
-            minimum=False,
-            maximum=True,
-            name="action_mask",
-        )
-        # ￥￥￥￥￥ 考虑这个地方要不要加一个masked loaction,还是在需要获取mask的地方再去计算，observation涉及到很多地方，如果觉得太麻烦可以不动这里，把mask逻辑写在后面
-        frightened_state_time = specs.Array((), jnp.int32, "frightened_state_time")
-        score = specs.Array((), jnp.int32, "frightened_state_time")
-        ghost_visible = specs.Array(shape=(4,), dtype=bool, name="ghost_visible") # %%%%%% 新增可见性规格
-        ghost_masked_locations = jnp.where(
-            ghost_visible[:, None],
-            ghost_locations,
-            jnp.full((4, 2), -1)
-        )
-
 
         return specs.Spec(
             Observation,
             "ObservationSpec",
-            grid=grid,
+            grid=specs.BoundedArray(
+                shape=(self.x_size, self.y_size),
+                dtype=jnp.int32,
+                name="grid",
+                minimum=0,
+                maximum=1,
+            ),
             player_locations=player_locations,
-            ghost_locations=ghost_locations,
-            power_up_locations=power_up_locations,
-            frightened_state_time=frightened_state_time,
-            pellet_locations=pellet_locations,
-            action_mask=action_mask,
-            score=score,
-            ghost_visible=ghost_visible,  # %%%%%% 新增可见性规格
-            ghost_masked_locations=ghost_masked_locations # %%%%%% 新增可见性规格
-        ) # ￥￥￥￥￥
+            ghost_locations=specs.Array(
+                shape=(4, 2),
+                dtype=jnp.int32,
+                name="ghost_locations",
+            ),
+            power_up_locations=specs.Array(
+                shape=(4, 2),
+                dtype=jnp.int32,
+                name="power_up_locations",
+            ),
+            pellet_locations=specs.Array(
+                shape=self.pellet_spaces.shape,
+                dtype=jnp.int32,
+                name="pellet_locations",
+            ),
+            action_mask=specs.BoundedArray(
+                shape=(5,),
+                dtype=bool,
+                minimum=False,
+                maximum=True,
+                name="action_mask",
+            ),
+            frightened_state_time=specs.Array((), jnp.int32, "frightened_state_time"),
+            score=specs.Array((), jnp.int32, "score"),
+            ghost_visible=specs.Array(shape=(4,), dtype=bool, name="ghost_visible"),
+            ghost_masked_locations=specs.Array(
+                shape=(4, 2),
+                dtype=jnp.int32,
+                name="ghost_masked_locations",
+            )
+        )
 
     @cached_property
     def action_spec(self) -> specs.DiscreteArray:
-        """Returns the action spec.
-
-        5 actions: [0,1,2,3,4] -> [Up, Right, Down, Left, No-op].
-
-        Returns:
-            action_spec: a `specs.DiscreteArray` spec object.
-        """
+        """返回动作规范"""
         return specs.DiscreteArray(5, name="action")
 
     def __repr__(self) -> str:
@@ -236,61 +123,30 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         )
 
     def reset(self, key: PRNGKey) -> Tuple[State, TimeStep[Observation]]:
-        """Resets the environment by calling the instance generator for a new instance.
-
-        Args:
-            key: A PRNGKey to use for random number generation.
-
-        Returns:
-            state: `State` object corresponding to the new state of the environment after a reset.
-            timestep: `TimeStep` object corresponding the first timestep returned by the environment
-                after a reset.
-        """
-
+        """重置环境"""
         state = self.generator(key)
 
-        # %%%%%% 初始化幽灵可见性和掩码位置
-        ghost_visible = jnp.ones(4, dtype=bool)  # 初始全部可见
-        ghost_masked_locations = state.ghost_locations  # 初始未掩码
+        # 初始化幽灵可见性和掩码位置
+        ghost_visible = jnp.ones(4, dtype=bool)
+        ghost_masked_locations = state.ghost_locations
         state = state.replace(
             ghost_visible=ghost_visible,
             ghost_masked_locations=ghost_masked_locations,
             old_ghost_locations=state.ghost_locations,
         )
-        # %%%%%% 在 reset 方法中初始化
-        # Generate observation
+
         obs = self._observation_from_state(state)
-
-        # Return a restart timestep of step type is FIRST.
         timestep = restart(observation=obs)
-
         return state, timestep
 
     def step(self, state: State, action: chex.Array) -> Tuple[State, TimeStep[Observation]]:
-        """Run one timestep of the environment's dynamics.
-
-        If an action is invalid, the agent does not move, i.e. the episode does not
-        automatically terminate.
-
-        Args:
-            state: State object containing the dynamics of the environment.
-            action: (int32) specifying which action to take: [0,1,2,3,4] correspond to
-                [Up, Right, Down, Left, No-op]. If an invalid action is taken, i.e. there is a wall
-                blocking the action, then no action (no-op) is taken.
-
-        Returns:
-            state: the new state of the environment.
-            the next timestep to be observed.
-        """
+        """执行一个时间步的环境动态"""
         current_ghost_locations = state.ghost_locations
         state = state.replace(old_ghost_locations=current_ghost_locations)
-        # %%%%%% 保存当前幽灵的真实位置到 old_ghost_locations,并在 step 方法中更新
 
-        # %%%%%% 新增：更新幽灵可见性
+        # 更新幽灵可见性
         def toggle_visibility(state: State) -> State:
-            # 每5步切换可见性
             new_ghost_visible = ~state.ghost_visible
-            # 计算掩码位置（不可见时设为-1）
             ghost_masked_locations = jnp.where(
                 new_ghost_visible[:, None],
                 state.ghost_locations,
@@ -299,160 +155,106 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             return state.replace(
                 ghost_visible=new_ghost_visible,
                 ghost_masked_locations=ghost_masked_locations,
-                # *** 去除step_count=state.step_count + 1
             )
 
-        # %%%%%% 判断是否需要切换可见性（每5步）
         state = jax.lax.cond(
             (state.step_count % 5) == 0,
             toggle_visibility,
-            lambda s: s,   # *** .replace(step_count=s.step_count + 1), 不切换可见性时，直接返回原状态
+            lambda s: s,
             state
         )
-        # *** 移除冗余的 step_count 更新：在 toggle_visibility 中不再修改 step_count。
-        # *** 在 jax.lax.cond 的 false 分支中直接返回原状态（无需递增 step_count）。
 
-        # Collect updated state based on environment dynamics
+        # 更新状态
         updated_state, collision_rewards = self._update_state(state, action)
+        next_state = updated_state.replace(step_count=state.step_count + 1)
 
-        # Create next_state from updated state
-        next_state = updated_state.replace(step_count=state.step_count + 1)  # type: ignore
-
-        # Check if episode terminates
+        # 检查终止条件
         num_pellets = next_state.pellets
         dead = next_state.dead
         time_limit_exceeded = next_state.step_count >= self.time_limit
         all_pellets_found = num_pellets == 0
-        dead = next_state.dead == 1
         done = time_limit_exceeded | dead | all_pellets_found
 
         reward = jnp.asarray(collision_rewards)
-        # Generate observation from the state
         observation = self._observation_from_state(next_state)
 
-        # Return either a MID or a LAST timestep depending on done.
         timestep = jax.lax.cond(
             done,
             termination,
             transition,
             reward,
             observation,
-        ) # ￥￥￥￥￥这里需要加个计数step的（按照我在文档中写的方案的话，后续需要访问这个step个数 % 5==0则改变可见性），或者其他策略动态调整鬼的可见性也可以
+        )
 
         return next_state, timestep
 
     def _update_state(self, state: State, action: chex.Array) -> Tuple[State, int]:
-        """Updates the state of the environment.
-
-        Args:
-            state: 'State` object corresponding to the new state of the environment.
-            action: An integer representing the player action.
-
-        Returns:
-            state: 'State` object corresponding to the new state of the environment.
-            collision_rewards: Rewards from objects the player has collided with
-        """
-
+        """更新环境状态"""
         key = state.key
         key, _ = jax.random.split(key)
 
-        # Move player
+        # 移动玩家
         next_player_pos = player_step(
             state=state, action=action, x_size=self.x_size, y_size=self.y_size, steps=1
         )
         next_player_pos = self.check_wall_collisions(state, next_player_pos)
-        state = state.replace(last_direction=jnp.array(action, jnp.int32))  # type: ignore
+        state = state.replace(last_direction=jnp.array(action, jnp.int32))
 
-        # Move ghosts
+        # 移动幽灵
         old_ghost_locations = state.ghost_locations
         ghost_paths, ghost_actions, key = ghost_move(state, self.x_size, self.y_size)
 
-        # Check for collisions with ghosts
+        # 检查与幽灵的碰撞
         state, done, ghost_col_rewards = check_ghost_collisions(ghost_paths, next_player_pos, state)
+        state = state.replace(player_locations=next_player_pos, dead=done)
 
-        state = state.replace(player_locations=next_player_pos)  # type: ignore
-        state = state.replace(dead=done)
-
+        # 检查能量豆
         power_up_locations, eat, power_up_rewards = self.check_power_up(state)
 
-        # Check for collected pellets
+        # 检查豆子收集
         collision_rewards, pellets, num_pellets = self.check_rewards(state)
 
-        # Update old ghost locations
-        state = state.replace(ghost_init_steps=state.ghost_init_steps - 1)
-        state = state.replace(old_ghost_locations=old_ghost_locations)
+        # 更新状态
+        state = state.replace(
+            ghost_init_steps=state.ghost_init_steps - 1,
+            old_ghost_locations=old_ghost_locations,
+            pellet_locations=pellets,
+            pellets=num_pellets,
+            key=key,
+            power_up_locations=power_up_locations,
+            ghost_actions=ghost_actions,
+            ghost_starts=state.ghost_starts - 1,
+            score=jnp.array(state.score + collision_rewards + power_up_rewards + ghost_col_rewards, jnp.int32),
+            frightened_state_time=jax.lax.cond(
+                eat > 0,
+                lambda: jnp.array(30, jnp.int32),
+                lambda: jnp.array(state.frightened_state_time - 1, jnp.int32)
+            )
+        )
 
-        state = state.replace(pellet_locations=pellets)
-        state = state.replace(pellets=num_pellets)
-        state = state.replace(key=key)
-
-        def powerup_collected() -> chex.Array:
-            """If a power-up was collected set scatter time to 30"""
-            return jnp.array(30, jnp.int32)
-
-        def tick_frightened_time() -> chex.Array:
-            """If a power-up was not collected reduce scatter time"""
-            return jnp.array(state.frightened_state_time - 1, jnp.int32)
-
-        # Check if frightened state is active and decrement timer
-        state.frightened_state_time = jax.lax.cond(eat > 0, powerup_collected, tick_frightened_time)
-
-        # Update power-up locations
-        state.power_up_locations = power_up_locations
-        state.ghost_actions = ghost_actions
-
-        # Decrease ghost starting delay
-        state.ghost_starts = state.ghost_starts - 1
-        reward = collision_rewards + power_up_rewards + ghost_col_rewards
-        state.score = jnp.array(state.score + reward, jnp.int32)
-        return state, reward
+        return state, collision_rewards + power_up_rewards + ghost_col_rewards
 
     def check_rewards(self, state: State) -> Tuple[int, chex.Array, int]:
-        """
-        Process the state of the game to compute rewards, updated pellet spaces, and remaining
-        number of pellets.
-
-        Args:
-            state: 'State` object corresponding to the current state of the environment
-
-        Returns:
-            rewards: an integer representing the reward earned by the player in the current state
-            pellet_spaces: a 2D jax array showing the location of all remaining cookies
-            num_cookies: an integer counting the remaining cookies on the map.
-        """
-
-        # Get the locations of the pellets and the player
+        """检查奖励和豆子状态"""
         pellet_spaces = jnp.array(state.pellet_locations)
         player_space = state.player_locations
         ps = jnp.array([player_space.y, player_space.x])
 
-        # Get the number of pellets on the map
-        num_pellets = state.pellets
+        power_up_space = jnp.array(state.power_up_locations)
+        player_space_power = state.player_locations
+        pp = jnp.array([player_space_power.y, player_space_power.x])
 
-        # Check if player has eaten a pellet in this step
         ate_pellet = jnp.any(jnp.all(ps == pellet_spaces, axis=-1))
-
-        # Reduce number of pellets on map if eaten, add reward and remove eaten pellet
-        num_pellets -= ate_pellet.astype(int)
-        rewards = ate_pellet * 10.0
+        ate_power = jnp.any(jnp.all(pp == power_up_space, axis=-1))
+        num_pellets = state.pellets - ate_pellet.astype(int)
+        rewards = ate_pellet * 10.0+ate_power*100.0
         mask = jnp.logical_not(jnp.all(ps == pellet_spaces, axis=-1))
         pellet_spaces = pellet_spaces * mask[..., None]
 
         return rewards, pellet_spaces, num_pellets
 
     def player_step(self, state: State, action: int, steps: int = 1) -> Position:
-        """
-        Compute the new position of the player based on the given state and action.
-
-        Args:
-            state: 'state` object corresponding to the new state of the environment.
-            action: an integer between 0 and 4 representing the player's chosen action.
-            steps: how many steps ahead of current position to search.
-
-        Returns:
-            new_pos: a `Position` object representing the new position of the player.
-        """
-
+        """计算玩家新位置"""
         position = state.player_locations
 
         move_left = lambda position: (position.y, position.x - steps)
@@ -465,73 +267,35 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             action, [move_left, move_up, move_right, move_down, no_op], position
         )
 
-        new_pos = Position(x=new_pos_col % self.x_size, y=new_pos_row % self.y_size)
-        return new_pos
+        return Position(x=new_pos_col % self.x_size, y=new_pos_row % self.y_size)
 
     def check_power_up(self, state: State) -> Tuple[chex.Array, chex.Numeric, chex.Numeric]:
-        """
-        Check if the player is on a power-up location and update the power-up
-        locations array accordingly.
-
-        Args:
-            state: 'state` object corresponding to the new state of the environment
-
-        Returns:
-            power_up_locations: locations of the remaining power-ups
-            eat: a bool indicating if the player can eat the ghosts
-            reward: an int of the reward gained from collecting power-ups
-        """
-
+        """检查能量豆状态"""
         power_up_locations = jnp.array(state.power_up_locations)
-
         player_space = state.player_locations
-        player_loc_x = player_space.x
-        player_loc_y = player_space.y
-        player_loc = jnp.array([player_loc_y, player_loc_x])
+        player_loc = jnp.array([player_space.y, player_space.x])
 
-        # Check if player and power_up position are shared
         on_powerup = (player_loc == power_up_locations).all(axis=-1).any()
         eat = on_powerup.astype(int)
         mask = (player_loc == power_up_locations).all(axis=-1)
-        invert_mask = ~mask
-        invert_mask = invert_mask.reshape(4, 1)
+        power_up_locations = power_up_locations * (~mask).reshape(4, 1)
 
-        # Mask out collected power-ups
-        power_up_locations = power_up_locations * invert_mask
-
-        # Assign reward for power-up
-        reward = eat * 50.0
-
-        return power_up_locations, eat, reward
+        return power_up_locations, eat, eat * 50.0
 
     def check_wall_collisions(self, state: State, new_player_pos: Position) -> Any:
-        """
-        Check if the new player position collides with a wall.
-
-        Args:
-            state: 'State` object corresponding to the new state of the environment.
-            new_player_pos: the position of the player after the last action.
-
-        Returns:
-            collision: a boolean indicating if the player has moved into a wall.
-        """
-
+        """检查墙壁碰撞"""
         grid = state.grid
         location_value = grid[new_player_pos.x, new_player_pos.y]
 
-        collision = jax.lax.cond(
+        return jax.lax.cond(
             location_value == 1,
             lambda x: new_player_pos,
             lambda x: state.player_locations,
             0,
         )
-        return collision
 
     def _compute_action_mask(self, state: State) -> chex.Array:
-        """Compute the action mask.
-        An action is considered invalid if it leads to a WALL or goes outside of the maze.
-        """
-
+        """计算动作掩码"""
         grid = state.grid
         player_pos = state.player_locations
 
@@ -539,7 +303,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             y, x = jnp.array([agent_position.y, agent_position.x]) + move
             return grid[x][y]
 
-        # vmap over the moves.
         action_mask = jax.vmap(is_move_valid, in_axes=(None, 0))(player_pos, MOVES) * jnp.array(
             [True, True, True, True, False]
         )
@@ -547,63 +310,38 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return action_mask
 
     def _observation_from_state(self, state: State) -> Observation:
-        """Create an observation from the state of the environment."""
+        """从状态创建观察"""
         action_mask = self._compute_action_mask(state).astype(bool)
-        ghost_masked_locations = jnp.where(
-            state.ghost_visible[:, None],
-            state.ghost_locations,
-            jnp.full((4, 2), -1)
-        )       # *** 直接生成
         return Observation(
             grid=state.grid,
             player_locations=state.player_locations,
-            ghost_locations=state.ghost_locations,  # %%%%%% 使用掩码后的位置
+            ghost_locations=state.ghost_locations,
             power_up_locations=state.power_up_locations,
             frightened_state_time=state.frightened_state_time,
             pellet_locations=state.pellet_locations,
             action_mask=action_mask,
             score=state.score,
-            ghost_visible=state.ghost_visible,  # %%%%%% 新增可见性字段
+            ghost_visible=state.ghost_visible,
             ghost_masked_locations=state.ghost_masked_locations
-        ) # ￥￥￥￥￥
+        )
 
     def render(self, state: State) -> Any:
-        """Render the given state of the environment.
-
-        Args:
-            state: `state` object containing the current environment state.
-        """
+        """渲染当前状态"""
         return self._viewer.render(state)
 
     def animate(
-        self,
-        states: Sequence[State],
-        interval: int = 200,
-        save_path: Optional[str] = None,
+            self,
+            states: Sequence[State],
+            interval: int = 200,
+            save_path: Optional[str] = None,
     ) -> matplotlib.animation.FuncAnimation:
-        """Creates an animated gif of the `Maze` environment based on the sequence of states.
-
-        Args:
-            states: sequence of environment states corresponding to consecutive timesteps.
-            interval: delay between frames in milliseconds, default to 200.
-            save_path: the path where the animation file should be saved. If it is None, the plot
-                will not be saved.
-
-        Returns:
-            animation.FuncAnimation: the animation object that was created.
-        """
-        # !!! 将State转换为Viewer需要的格式（假设需要Observation）
-        observations = [state.observation for state in states]
+        """创建动画"""
         return self._viewer.animate(
-        states=observations,  # 或直接传递states如果Viewer支持State
-        interval=interval,
-        save_path=save_path,
+            states=states,
+            interval=interval,
+            save_path=save_path,
         )
 
     def close(self) -> None:
-        """Perform any necessary cleanup.
-
-        Environments will automatically :meth:`close()` themselves when
-        garbage collected or when the program exits.
-        """
+        """关闭环境"""
         self._viewer.close()
