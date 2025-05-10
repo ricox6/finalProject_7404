@@ -149,8 +149,8 @@ class AsciiGenerator(Generator):
             power_up_locations=power_up_locations,
             player_locations=player_locations,
             ghost_locations=ghost_locations,
-            ghost_visible=ghost_visible,  # %%%%%% 新增字段
-            ghost_masked_locations=ghost_masked_locations,  # %%%%%% 新增字段
+            ghost_visible=ghost_visible,
+            ghost_masked_locations=ghost_masked_locations,
             old_ghost_locations=old_ghost_locations,
             initial_player_locations=player_locations,
             initial_ghost_positions=ghost_locations,
@@ -165,4 +165,4 @@ class AsciiGenerator(Generator):
             step_count=jnp.array(0, jnp.int32),
             ghost_eaten=jnp.array([True, True, True, True]),
             score=jnp.array(0, jnp.int32),
-        ) # ￥￥￥￥￥ 考虑这个地方要不要加一个masked loaction,还是在需要获取mask的地方再去计算，observation涉及到很多地方，如果觉得太麻烦可以不动这里，把mask逻辑写在后面
+        )

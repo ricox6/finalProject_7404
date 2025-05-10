@@ -149,7 +149,6 @@ class A2CAgent(Agent):
         value = jax.vmap(compute_value)(observation)
         value = value.squeeze(-1)
 
-        # 优势计算（完全保持标准A2C的逻辑）
         discounts = jnp.asarray(self.discount_factor * data.discount, float)
         value_tm1 = value[:-1]
         value_t = value[1:]
@@ -164,7 +163,6 @@ class A2CAgent(Agent):
             out_axes=1,
         )(value_tm1, data.reward, discounts, value_t)
 
-        # 损失计算（完全保持标准A2C的逻辑）
         critic_loss = jnp.mean(advantage ** 2)
 
         metrics: Dict = {}
@@ -178,7 +176,6 @@ class A2CAgent(Agent):
 
         total_loss = self.l_pg * policy_loss + self.l_td * critic_loss + self.l_en * entropy_loss
 
-        # 指标收集（保持标准A2C格式，增加LSTM状态返回）
         metrics.update(
             total_loss=total_loss,
             policy_loss=policy_loss,
@@ -208,7 +205,7 @@ class A2CAgent(Agent):
                 lstm_state: Optional[LSTMState] = None
         ) -> Tuple[chex.Array, Tuple[chex.Array, chex.Array], LSTMState]:
             if lstm_state is not None:
-                if isinstance(lstm_state, dict):  # 处理字典形式的LSTM状态
+                if isinstance(lstm_state, dict):
                         try:
                             haiku_state = hk.LSTMState(
                                 hidden=lstm_state['lstm'].hidden,
@@ -219,13 +216,13 @@ class A2CAgent(Agent):
                                 cell=lstm_state['cell']
                             )
 
-                elif hasattr(lstm_state, 'to_haiku'):  # 处理LSTMState类型
+                elif hasattr(lstm_state, 'to_haiku'):
                     haiku_state = lstm_state.to_haiku()
                 else:
                     haiku_state = None
             else:
                 haiku_state = None
-            # 处理输入序列
+
             processed_seq = []
             for obs in observation_seq:
                 if isinstance(obs, (jnp.ndarray, jnp.ndarray)):
@@ -233,11 +230,11 @@ class A2CAgent(Agent):
                 else:
                     processed_seq.append(obs)
 
-            # 强制输入为List[[1,...]]
+
             if not isinstance(observation_seq, list):
                 observation_seq = [observation_seq]
 
-            # 确保每个观测的batch_size=1
+
             processed_seq = []
             for obs in observation_seq:
                 if isinstance(obs, (jnp.ndarray, jnp.ndarray)):
@@ -245,23 +242,22 @@ class A2CAgent(Agent):
                 else:
                     processed_seq.append(obs)
 
-            # 调用网络
             logits, new_lstm_state = policy_network.apply(
                 policy_params,
                 processed_seq,
                 haiku_state
             )
             if new_lstm_state is not None:
-                if isinstance(new_lstm_state, dict):  # 处理字典形式的LSTM状态
+                if isinstance(new_lstm_state, dict):
                     new_lstm_state = hk.LSTMState(
                         hidden=new_lstm_state['lstm'].hidden,
                         cell=new_lstm_state['lstm'].cell
                     )
-                elif hasattr(new_lstm_state, 'to_haiku'):  # 处理LSTMState类型
+                elif hasattr(new_lstm_state, 'to_haiku'):
                     new_lstm_state = lstm_state.to_haiku()
             else:
                 new_lstm_state = None
-            # 动作选择
+
             if stochastic:
                 raw_action = parametric_action_distribution.sample_no_postprocessing(logits, key)
                 log_prob = parametric_action_distribution.log_prob(logits, raw_action)
@@ -277,10 +273,8 @@ class A2CAgent(Agent):
     def rollout(self, policy_params, acting_state, lstm_state=None):
         policy = self.make_policy(policy_params, stochastic=True)
 
-        # 获取batch_size
-        batch_size = 1  # 假设observation有batch维度
+        batch_size = 1
 
-        # 初始化观测缓冲区（保持batch维度）
         obs_buffer = [
                          jax.tree_map(lambda x: x, acting_state.timestep.observation)  # 直接使用已有batch维度
                      ] * self.sequence_length
@@ -288,9 +282,8 @@ class A2CAgent(Agent):
         def run_one_step(carry, key):
             acting_state, lstm_state, obs_buffer = carry
 
-            # 构建输入序列（保持batch维度）
             obs_seq = [
-                jax.tree_map(lambda x: x, obs)  # 保持原有维度
+                jax.tree_map(lambda x: x, obs)
                 for obs in obs_buffer
             ]
             if isinstance(lstm_state, LSTMState):
@@ -298,21 +291,18 @@ class A2CAgent(Agent):
             else:
                 lstm_state = lstm_state
 
-            # 获取action（确保batch维度匹配）
             action, (log_prob, logits), new_lstm_state = policy(
                 obs_seq, key, lstm_state
             )
 
-            # 环境交互
             next_state, next_timestep = self.env.step(
                 acting_state.state,
                 action
             )
-            # 更新缓冲区（保持batch维度）
-            new_obs = jax.tree_map(lambda x: x, next_timestep.observation)  # 保持原有维度
+
+            new_obs = jax.tree_map(lambda x: x, next_timestep.observation)
             new_buffer = obs_buffer[1:] + [new_obs]
 
-            # 构建transition（保持batch维度）
             transition = Transition(
                 observation=jax.tree_map(lambda x: x, acting_state.timestep.observation),
                 action=action,
@@ -341,10 +331,8 @@ class A2CAgent(Agent):
 
             return (new_acting_state, new_lstm_state, new_buffer), transition
 
-            # 生成随机keys
         keys = jax.random.split(acting_state.key, self.n_steps)
 
-        # 执行rollout
         (final_state, final_lstm, _), all_data = jax.lax.scan(
             run_one_step,
             (acting_state, lstm_state, obs_buffer),
@@ -356,21 +344,17 @@ class A2CAgent(Agent):
     def act(
             self,
             policy_params: hk.Params,
-            timestep: Any,  # 直接传入timestep而非state
+            timestep: Any,
             lstm_state: Optional[LSTMState] = None,
             key: Optional[chex.PRNGKey] = None
     ) -> Tuple[chex.Array, LSTMState]:
-        """适配 timestep.observation 的推理方法"""
         parametric_action_distribution = self.actor_critic_networks.parametric_action_distribution
 
-        # 1. 处理默认key
         if key is None:
             key = jax.random.PRNGKey(0)
 
-        # 2. 提取观测（从timestep中获取）
-        observation = timestep.observation  # 直接访问timestep
+        observation = timestep.observation
 
-        # 3. 构建LSTM输入序列
         obs_seq = [
                       jax.tree_map(
                           lambda x: x[None] if isinstance(x, (jnp.ndarray, jnp.ndarray)) else x,
@@ -378,7 +362,6 @@ class A2CAgent(Agent):
                       )
                   ] * self.sequence_length
 
-        # 4. LSTM状态处理（保持不变）
         haiku_state = None
         if lstm_state is not None:
             haiku_state = hk.LSTMState(
@@ -386,13 +369,11 @@ class A2CAgent(Agent):
                 cell=lstm_state.cell
             )
 
-        # 5. 调用策略网络
         action, (log_prob, logits), new_haiku_state = self.make_policy(
             policy_params=policy_params,
             stochastic=False
         )(obs_seq, key, haiku_state)
 
-        # 6. 处理输出
         new_lstm_state = None
         if new_haiku_state is not None:
             new_lstm_state = LSTMState(

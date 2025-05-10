@@ -82,22 +82,20 @@ def inference(agent: Agent, env: PacMan, training_state: TrainingState):
     key = jax.random.PRNGKey(0)
     state, timestep = env.reset(key)
     states = [state]
-    lstm_state = None  # 初始LSTM状态
+    lstm_state = None
     lstm_state = jax.tree_map(lambda x: jax.device_put(x, jax.devices()[0]), lstm_state)
 
     def remove_pmap_dim(params):
         return jax.tree_map(lambda x: x[0] if x.ndim > 1 else x, params)
 
-    # 获取单设备参数
     policy_params = remove_pmap_dim(training_state.params_state.params.actor)
 
     # Run episode
     for _ in range(200):
-        # 关键修改：正确调用act方法
         with jax.default_device(jax.devices()[0]):
             action, lstm_state = agent.act(
                 policy_params=policy_params,
-                timestep=timestep,  # 当前环境状态
+                timestep=timestep,
                 lstm_state=lstm_state,
                 key=key
             )

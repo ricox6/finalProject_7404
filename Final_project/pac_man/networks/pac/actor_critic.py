@@ -138,11 +138,10 @@ def make_network_pac_man(
             observation_seq: List[Observation],
             lstm_state: Optional[LSTMState] = None
     ) -> Tuple[chex.Array, LSTMState]:
-        # 获取batch大小（唯一需要修改的地方）
         batch_size = observation_seq[0].grid.shape[0] if hasattr(observation_seq[0].grid, 'shape') else 1
         processed_features = []
         for obs in observation_seq:
-            rgb_obs = process_image(obs)  # 保持原有process_image不变
+            rgb_obs = process_image(obs)
             conv_out = rgb_obs
 
             for dim in conv_n_channels:
@@ -158,7 +157,6 @@ def make_network_pac_man(
                 ghost_locations_x = obs.ghost_locations[:, :, 0]
                 ghost_locations_y = obs.ghost_locations[:, :, 1]
 
-                # 保持原有拼接逻辑
                 features = jnp.concatenate([
                     conv_out,  # [B, D_conv]
                     player_pos,  # [B, 2]
@@ -178,7 +176,6 @@ def make_network_pac_man(
 
                 player_pos = jnp.expand_dims(player_pos, 0)
 
-                # 保持原有拼接逻辑
                 features = jnp.concatenate([
                     conv_out,  # [B, D_conv]
                     player_pos,  # [B, 2]
@@ -189,24 +186,19 @@ def make_network_pac_man(
 
             processed_features.append(features)
 
-        # 序列处理 [T, B, D]
         sequence = jnp.stack(processed_features, axis=0)
 
-        # LSTM处理（保持原有结构）
         lstm = hk.LSTM(lstm_hidden_size)
 
-        # 状态初始化（保持原有逻辑）
         try:
             a = lstm_state.hidden
             haiku_state = lstm_state
         except:
             haiku_state = lstm.initial_state(batch_size)
 
-        # print(sequence.shape)
         output_seq, new_haiku_state = hk.dynamic_unroll(lstm, sequence, haiku_state)
-        last_output = output_seq[-1]  # [B, D_lstm]
+        last_output = output_seq[-1]
 
-        # 输出头处理（保持原有逻辑）
         if critic:
             head = hk.nets.MLP((*mlp_units, 1), activate_final=False)
             output = head(last_output)  # [B, 1]
@@ -214,10 +206,9 @@ def make_network_pac_man(
             head = hk.nets.MLP((*mlp_units, num_actions), activate_final=False)
             logits = head(last_output)  # [B, A]
 
-            # 处理action_mask（确保维度匹配）
             action_mask = jnp.array(observation_seq[-1].action_mask, bool)
-            if action_mask.ndim == 1:  # 如果是单样本
-                action_mask = jnp.tile(action_mask, (batch_size, 1))  # 广播到[B, A]
+            if action_mask.ndim == 1:
+                action_mask = jnp.tile(action_mask, (batch_size, 1))
             key=jax.random.PRNGKey(0)
             logits=logits+0.5*jax.random.normal(key,logits.shape)
             output = jnp.where(
@@ -228,8 +219,6 @@ def make_network_pac_man(
 
         return output, LSTMState.from_haiku(new_haiku_state)
 
-
-    # 保持原有transform和函数定义不变
     transformed = hk.transform_with_state(network_fn)
 
 

@@ -37,7 +37,6 @@ from Final_project.pac_man.env_basic.viewer_basic import Viewer
 
 
 class PacMan(Environment[State, specs.DiscreteArray, Observation]):
-    """PacMan游戏环境的JAX实现"""
 
     def __init__(
             self,
@@ -56,7 +55,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
 
     @cached_property
     def observation_spec(self) -> specs.Spec[Observation]:
-        """定义观察规范"""
         player_locations = specs.Spec(
             Position,
             "PositionSpec",
@@ -109,7 +107,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
 
     @cached_property
     def action_spec(self) -> specs.DiscreteArray:
-        """返回动作规范"""
         return specs.DiscreteArray(5, name="action")
 
     def __repr__(self) -> str:
@@ -123,10 +120,8 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         )
 
     def reset(self, key: PRNGKey) -> Tuple[State, TimeStep[Observation]]:
-        """重置环境"""
         state = self.generator(key)
 
-        # 初始化幽灵可见性和掩码位置
         ghost_visible = jnp.ones(4, dtype=bool)
         ghost_masked_locations = state.ghost_locations
         state = state.replace(
@@ -140,11 +135,9 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return state, timestep
 
     def step(self, state: State, action: chex.Array) -> Tuple[State, TimeStep[Observation]]:
-        """执行一个时间步的环境动态"""
         current_ghost_locations = state.ghost_locations
         state = state.replace(old_ghost_locations=current_ghost_locations)
 
-        # 更新幽灵可见性
         def toggle_visibility(state: State) -> State:
             new_ghost_visible = ~state.ghost_visible
             ghost_masked_locations = jnp.where(
@@ -164,11 +157,9 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             state
         )
 
-        # 更新状态
         updated_state, collision_rewards = self._update_state(state, action)
         next_state = updated_state.replace(step_count=state.step_count + 1)
 
-        # 检查终止条件
         num_pellets = next_state.pellets
         dead = next_state.dead
         time_limit_exceeded = next_state.step_count >= self.time_limit
@@ -189,32 +180,25 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return next_state, timestep
 
     def _update_state(self, state: State, action: chex.Array) -> Tuple[State, int]:
-        """更新环境状态"""
         key = state.key
         key, _ = jax.random.split(key)
 
-        # 移动玩家
         next_player_pos = player_step(
             state=state, action=action, x_size=self.x_size, y_size=self.y_size, steps=1
         )
         next_player_pos = self.check_wall_collisions(state, next_player_pos)
         state = state.replace(last_direction=jnp.array(action, jnp.int32))
 
-        # 移动幽灵
         old_ghost_locations = state.ghost_locations
         ghost_paths, ghost_actions, key = ghost_move(state, self.x_size, self.y_size)
 
-        # 检查与幽灵的碰撞
         state, done, ghost_col_rewards = check_ghost_collisions(ghost_paths, next_player_pos, state)
         state = state.replace(player_locations=next_player_pos, dead=done)
 
-        # 检查能量豆
         power_up_locations, eat, power_up_rewards = self.check_power_up(state)
 
-        # 检查豆子收集
         collision_rewards, pellets, num_pellets = self.check_rewards(state)
 
-        # 更新状态
         state = state.replace(
             ghost_init_steps=state.ghost_init_steps - 1,
             old_ghost_locations=old_ghost_locations,
@@ -235,7 +219,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return state, collision_rewards + power_up_rewards + ghost_col_rewards
 
     def check_rewards(self, state: State) -> Tuple[int, chex.Array, int]:
-        """检查奖励和豆子状态"""
         pellet_spaces = jnp.array(state.pellet_locations)
         player_space = state.player_locations
         ps = jnp.array([player_space.y, player_space.x])
@@ -254,7 +237,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return rewards, pellet_spaces, num_pellets
 
     def player_step(self, state: State, action: int, steps: int = 1) -> Position:
-        """计算玩家新位置"""
         position = state.player_locations
 
         move_left = lambda position: (position.y, position.x - steps)
@@ -270,7 +252,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return Position(x=new_pos_col % self.x_size, y=new_pos_row % self.y_size)
 
     def check_power_up(self, state: State) -> Tuple[chex.Array, chex.Numeric, chex.Numeric]:
-        """检查能量豆状态"""
         power_up_locations = jnp.array(state.power_up_locations)
         player_space = state.player_locations
         player_loc = jnp.array([player_space.y, player_space.x])
@@ -283,7 +264,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return power_up_locations, eat, eat * 50.0
 
     def check_wall_collisions(self, state: State, new_player_pos: Position) -> Any:
-        """检查墙壁碰撞"""
         grid = state.grid
         location_value = grid[new_player_pos.x, new_player_pos.y]
 
@@ -295,7 +275,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         )
 
     def _compute_action_mask(self, state: State) -> chex.Array:
-        """计算动作掩码"""
         grid = state.grid
         player_pos = state.player_locations
 
@@ -310,7 +289,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         return action_mask
 
     def _observation_from_state(self, state: State) -> Observation:
-        """从状态创建观察"""
         action_mask = self._compute_action_mask(state).astype(bool)
         return Observation(
             grid=state.grid,
@@ -326,7 +304,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         )
 
     def render(self, state: State) -> Any:
-        """渲染当前状态"""
         return self._viewer.render(state)
 
     def animate(
@@ -335,7 +312,6 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
             interval: int = 200,
             save_path: Optional[str] = None,
     ) -> matplotlib.animation.FuncAnimation:
-        """创建动画"""
         return self._viewer.animate(
             states=states,
             interval=interval,
@@ -343,5 +319,4 @@ class PacMan(Environment[State, specs.DiscreteArray, Observation]):
         )
 
     def close(self) -> None:
-        """关闭环境"""
         self._viewer.close()

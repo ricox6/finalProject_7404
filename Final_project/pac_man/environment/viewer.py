@@ -29,7 +29,6 @@ from numpy.typing import NDArray
 from .maze_rendering import MazeViewer
 from .types import Observation, State
 
-# # ￥￥￥￥￥这里是渲染可视化部分，这部分需要的是masked之后的，也就是鬼时隐时现的情况，建议在location那个地方即时访问visible属性然后mask现在这个代码的location，然后用mask_location进行后续内容
 class PacManViewer(MazeViewer):
     FIGURE_SIZE = (4.0, 4.0)
 
@@ -118,12 +117,11 @@ class PacManViewer(MazeViewer):
         )
 
         # Save the animation as a gif.
-        #!!!显式保存GIF
         if save_path:
             self._animation.save(
             save_path,
-            writer="pillow",  # 确保安装pillow库
-            fps=1000//interval,  # 计算帧率
+            writer="pillow",
+            fps=1000//interval,
             )
             print(f"GIF saved to {save_path}")
 
@@ -202,17 +200,17 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
 
     layers = (layer_1, layer_2, layer_3)
 
-    # %%%%%% 新增：获取幽灵可见性字段（需确保 Observation/State 包含 ghost_visible）
-    ghost_visible = observation.ghost_visible  # [4,] 布尔数组
+
+    ghost_visible = observation.ghost_visible
 
     def set_ghost_colours(
         layers: chex.Array,
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
-            # 直接检查位置是否为无效值（如 -1）
+
             pos = ghost_pos[i]
-            if jnp.all(pos == -1):  # 如果位置被掩码，跳过渲染
+            if jnp.all(pos == -1):
                 continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
@@ -227,9 +225,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
-            # 直接检查位置是否为无效值（如 -1）
+
             pos = ghost_pos[i]
-            if jnp.all(pos == -1):  # 如果位置被掩码，跳过渲染
+            if jnp.all(pos == -1):
                 continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
@@ -275,9 +273,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
-            # 直接检查位置是否为无效值（如 -1）
+
             pos = ghost_pos[i]
-            if jnp.all(pos == -1):  # 如果位置被掩码，跳过渲染
+            if jnp.all(pos == -1):
                 continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]
@@ -314,9 +312,9 @@ def create_grid_image(observation: Union[Observation, State]) -> chex.Array:
     ) -> Tuple[chex.Array, chex.Array, chex.Array]:
         layer_1, layer_2, layer_3 = layers
         for i in range(4):
-            # 直接检查位置是否为无效值（如 -1）
+
             pos = ghost_pos[i]
-            if jnp.all(pos == -1):  # 如果位置被掩码，跳过渲染
+            if jnp.all(pos == -1):
                 continue
             y = ghost_pos[i][0]
             x = ghost_pos[i][1]

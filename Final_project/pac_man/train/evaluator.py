@@ -94,15 +94,14 @@ class Evaluator:
                 return jnp.asarray(x, dtype=jnp.int32)
             elif isinstance(x, (float, jnp.float32, jnp.float64)):
                 return jnp.asarray(x, dtype=jnp.float32)
-            return jnp.asarray(x)  # 其他情况保持原类型
+            return jnp.asarray(x)
 
-            # 修改点2：初始化缓冲区时保留数据类型
         if isinstance(self.agent, A2CAgent):
             def init_lstm_state(hidden_size, batch_size):
                 lstm = hk.LSTM(hidden_size)
                 return lstm.initial_state(batch_size)
 
-            # 将初始化函数转换为纯函数
+
             init_lstm_state_fn = hk.transform(init_lstm_state).apply
             init_lstm_params = hk.transform(init_lstm_state).init(
                 key, self.agent.lstm_hidden_size, 1  # batch_size=1
@@ -179,9 +178,9 @@ class Evaluator:
 
             return (
                 new_acting_state,  # ActingState
-                return_ + next_timestep.reward,  # 累计奖励
-                new_lstm_state,  # LSTM状态
-                new_obs_buffer  # 观测缓冲区
+                return_ + next_timestep.reward,
+                new_lstm_state,
+                new_obs_buffer
             )
 
         # Run episode
@@ -220,10 +219,8 @@ class Evaluator:
             keys,
         )
 
-        # 修改点2：只取第一个样本的结果
         eval_metrics = jax.tree_map(lambda x: x[0], eval_metrics_all)
 
-        # 修改点3：不再需要pmean聚合（因为只返回单个样本）
         return eval_metrics
 
     def run_evaluation(

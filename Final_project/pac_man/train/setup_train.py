@@ -40,7 +40,6 @@ from Final_project.pac_man.networks.protocols import RandomPolicy
 from Final_project.pac_man.train.types import ActingState, TrainingState, LSTMState
 from wrappers import MultiToSingleWrapper, VmapAutoResetWrapper
 
-# 新增导入
 from Final_project.pac_man.environment.viewer import PacManViewer
 from Final_project.pac_man.environment.types import State
 import matplotlib.pyplot as plt
@@ -213,7 +212,6 @@ def setup_training_state(env: Environment, agent: Agent, key: chex.PRNGKey) -> T
     )
 
 
-# 新增函数：可视化训练结果
 def visualize_training(states: List[State], save_path: Optional[str] = None) -> None:
     """Visualize the training process using the PacManViewer.
 
@@ -221,16 +219,16 @@ def visualize_training(states: List[State], save_path: Optional[str] = None) -> 
         states: List of states collected during training.
         save_path: Optional path to save the animation as a GIF.
     """
-    # 创建查看器
+
     viewer = PacManViewer(name="PacMan Training", render_mode="human")
 
-    # 渲染每一帧
+
     frames = []
     for state in states:
         frame = viewer.render(state)
         frames.append(frame)
 
-    # 创建动画
+
     if save_path:
         fig, ax = plt.subplots()
 
@@ -249,11 +247,9 @@ def visualize_training(states: List[State], save_path: Optional[str] = None) -> 
         anim.save(save_path, writer="pillow", fps=5)
         plt.close(fig)
 
-    # 交互式显示
     plt.show()
 
 
-# 新增函数：收集训练过程中的状态
 def collect_training_states(
         agent: Agent,
         env: Environment,
@@ -290,11 +286,9 @@ def collect_training_states(
 
 
 def remove_batch_dim(params):
-    """移除所有参数的第一个维度（批量维度）"""
 
     def _squeeze_first_dim(x):
-        if x.ndim > 1:  # 仅处理多维数组
-            return x.squeeze(axis=0)  # 移除第0维
-        return x  # 标量或一维数组保持不变
-
+        if x.ndim > 1:
+            return x.squeeze(axis=0)
+        return x
     return jax.tree_map(_squeeze_first_dim, params)

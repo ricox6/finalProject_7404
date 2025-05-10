@@ -120,5 +120,3 @@ class Observation(NamedTuple):
     score: jnp.int32  # ()
     ghost_visible: chex.Array
     ghost_masked_locations:chex.Array
-    # %%%%%% [4,] 布尔数组，表示幽灵可见性
-    # ￥￥￥￥￥ 这个地方根据env里面的observation改，如果那里没加这里就不要动，但是其实为了统一我是建议都加上，虽然会麻烦但是不会出错，不然debug很痛苦

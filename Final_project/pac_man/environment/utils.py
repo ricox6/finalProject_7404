@@ -40,7 +40,7 @@ def ghost_move(
     key, ghost_key_0, ghost_key_1, ghost_key_2, ghost_key_3 = jax.random.split(key, 5)
     ghost_keys = jnp.array([ghost_key_0, ghost_key_1, ghost_key_2, ghost_key_3])
     ghost_pos = state.ghost_locations
-    old_ghost_locations = state.old_ghost_locations  # %%%%%% 真实位置
+    old_ghost_locations = state.old_ghost_locations
     player_pos = state.player_locations
     start_time = state.ghost_starts
     ghost_paths = []
@@ -54,9 +54,7 @@ def ghost_move(
         ghost_num: int,
         player_pos: chex.Array,
         ghost_init_target: chex.Array,
-        old_ghost_locations: chex.Array, # ￥￥￥￥￥这里不要masked的！这里要真实的location，这里都是对真实情况的操作，无视可见不可见状态，处理真实的移动和碰撞！
-    # %%%%%% 疑问：在env的step方法里，我在调用 _update_state 前保存 ghost_locations，避免移动后的新位置覆盖 old_ghost_locations，是否这里就不用重复去写？我自己先再看一下
-    # %%%%%% 加入一行后，old_ghost_locations 直接从 state.old_ghost_locations 获取，并作为参数传递给 check_ghost_wall_collisions
+        old_ghost_locations: chex.Array,
         ghost_start: chex.Array,
         scatter_target: chex.Array,
     ) -> Tuple[chex.Array, int]:
@@ -70,7 +68,7 @@ def ghost_move(
             ghost_num,
             player_pos,
             ghost_init_target,
-            old_ghost_locations, # ￥￥￥￥￥这里不要masked的！这里要真实的location
+            old_ghost_locations,
             scatter_target,
             x_size,
             y_size,
@@ -153,7 +151,7 @@ def ghost_move(
         ghost_nums,
         player_pos,
         jnp.array(ghost_init_targets),
-        jnp.array(old_ghost_locations),  # %%%%%% 直接传递整个旧位置数组
+        jnp.array(old_ghost_locations),
         start_time,
         scatter_targets,
     )
@@ -167,9 +165,7 @@ def check_ghost_wall_collisions(
     ghost_num: int,
     pacman_pos: Position,
     init_target: chex.Array,
-    old_ghost_locations: chex.Array, # ￥￥￥￥￥一样的，真实的
-    # %%%%%% 这些部分chex.Array 是用于 JAX 数组的类型标注工具。
-    # %%%%%% old_ghost_locations 无需修改，因其已通过 env.py 正确初始化为真实位置，且 utils.py 的函数逻辑正确使用该参数。
+    old_ghost_locations: chex.Array,
     scatter_target: chex.Array,
     x_size: int,
     y_size: int,
@@ -208,7 +204,6 @@ def check_ghost_wall_collisions(
 
     # Block old paths so ghosts don't backtrack
     ghost_mask = jnp.any(ghost_p != old_ghost_location, axis=1)
-    #  ￥￥￥￥￥ 下面是四个鬼的定义和移动逻辑，这个不用改，上面下面需要的都是真实值
     # For ghost 0: Move to closest tile to pacman
     def red_ghost(pacman_pos: Position) -> Tuple[chex.Array, chex.Array]:
         """
@@ -393,7 +388,7 @@ def check_ghost_collisions(
         col_reward = col_reward * edible
         return path, ghost_init_steps, done, col_reward, ghost_eaten
 
-    old_ghost_positions = state.old_ghost_locations  # %%%%%% 真实位置
+    old_ghost_positions = state.old_ghost_locations
     ghost_positions, ghost_init, dones, col_rewards, ghost_eaten = jax.vmap(
         check_collisions, in_axes=(0, None, 0, None, 0, 0)
     )(
@@ -420,7 +415,7 @@ def get_directions(pacman_position: Position, ghost_position: chex.Array) -> che
             ghost_position[1] - pacman_position.x,
         ]
     )
-    return direction # ￥￥￥￥￥这里不要masked的！这里要真实的location
+    return direction
 
 
 def player_step(state: State, action: int, x_size: int, y_size: int, steps: int = 1) -> Position:
