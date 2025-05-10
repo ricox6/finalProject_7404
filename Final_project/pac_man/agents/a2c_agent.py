@@ -50,8 +50,8 @@ class A2CAgent(Agent):
             l_pg: float,
             l_td: float,
             l_en: float,
-            lstm_hidden_size: int = 128, # 新增参数
-            sequence_length: int = 10,  # 新增序列长度参数
+            lstm_hidden_size: int = 128,
+            sequence_length: int = 10,
     ) -> None:
         super().__init__(total_batch_size=total_batch_size)
         self.env = env
@@ -70,10 +70,8 @@ class A2CAgent(Agent):
 
     def init_params(self, key: chex.PRNGKey) -> ParamsState:
         actor_key, critic_key = jax.random.split(key)
-        # 创建序列化的虚拟观测
         dummy_obs = self.observation_spec.generate_value()
 
-        # 生成与评估时完全一致的格式
         dummy_obs_seq = jax.tree_map(
             lambda x: jnp.stack([x] * self.sequence_length),  # (4,H,W)
             dummy_obs
@@ -103,7 +101,6 @@ class A2CAgent(Agent):
                 f"type {type(training_state.params_state)}."
             )
 
-        # 修改为处理LSTM状态
         grad, (acting_state, metrics, new_lstm_state) = jax.grad(self.a2c_loss, has_aux=True)(
             training_state.params_state.params,
             training_state.acting_state,
@@ -121,7 +118,7 @@ class A2CAgent(Agent):
                 update_count=training_state.params_state.update_count + 1,
             ),
             acting_state=acting_state,
-            lstm_state=new_lstm_state  # 更新LSTM状态
+            lstm_state=new_lstm_state
         )
         return training_state, metrics
 
@@ -134,13 +131,11 @@ class A2CAgent(Agent):
         parametric_action_distribution = self.actor_critic_networks.parametric_action_distribution
         value_apply = self.actor_critic_networks.value_network.apply
 
-        # 执行rollout（返回新增的LSTM状态）
         acting_state, data, new_lstm_state = self.rollout(
             policy_params=params.actor,
             acting_state=acting_state,
             lstm_state=lstm_state
         )
-        # 构建包含最后一步的完整观测序列
         last_observation = jax.tree_map(lambda x: x[-1], data.next_observation)
         observation = jax.tree_util.tree_map(
             lambda obs_0_tm1, obs_t: jnp.concatenate([obs_0_tm1, obs_t[None]], axis=0),
@@ -148,17 +143,16 @@ class A2CAgent(Agent):
             last_observation,
         )
 
-        # 价值计算（保持与标准A2C相同的逻辑）
         def compute_value(obs):
-            return value_apply(params.critic, [obs], None)[0]  # LSTM版本需要序列输入
+            return value_apply(params.critic, [obs], None)[0]
 
-        value = jax.vmap(compute_value)(observation)  # [T+1, B, 1]
-        value = value.squeeze(-1)  # 移除最后一个维度 [T+1, B]
+        value = jax.vmap(compute_value)(observation)
+        value = value.squeeze(-1)
 
         # 优势计算（完全保持标准A2C的逻辑）
         discounts = jnp.asarray(self.discount_factor * data.discount, float)
-        value_tm1 = value[:-1]  # [T, B]
-        value_t = value[1:]  # [T, B]
+        value_tm1 = value[:-1]
+        value_t = value[1:]
 
         advantage = jax.vmap(
             functools.partial(
